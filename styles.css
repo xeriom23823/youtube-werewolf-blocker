@@ -1,0 +1,32 @@
+/* 基本遮蔽層樣式 */
+.identity-blocker {
+    position: fixed;
+    z-index: 9999;
+    /* 移除固定的背景顏色，改為由 JavaScript 控制 */
+}
+
+.identity-blocker.left {
+    left: 0;
+}
+
+.identity-blocker.right {
+    right: 0;
+}
+
+/* 按鈕特定樣式，確保其可點擊 */
+.blocker-toggle-button {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    z-index: 10000 !important;
+}
+
+/* 遮蔽面板容器樣式 */
+.identity-blocker-container {
+    pointer-events: auto;
+}
+
+/* 透明區域特別樣式 */
+.blocker-transparent {
+    background-color: transparent !important;
+    background: none !important;
+}

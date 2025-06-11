@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>YouTube 狼人殺遮蔽助手</title>
+  <style>
+    body {
+      width: 300px;
+      padding: 15px;
+      font-family: 'Microsoft JhengHei', '微軟正黑體', Arial, sans-serif;
+      background-color: #1f1f1f;
+      color: #ffffff;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    .logo {
+      width: 40px;
+      height: 40px;
+      margin-right: 10px;
+    }
+    .title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #ffffff;
+      margin: 0;
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      margin-top: 10px;
+      margin-bottom: 15px;
+    }
+    .status-text {
+      margin-right: 10px;
+    }
+    .toggle-button {
+      background-color: #cc0000;
+      color: white;
+      border: none;
+      padding: 8px 15px;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      width: 100%;
+      font-weight: bold;
+    }
+    .toggle-button.active {
+      background-color: #00cc66;
+    }
+    .toggle-button:hover {
+      opacity: 0.9;
+    }
+    .settings {
+      margin-top: 15px;
+      border-top: 1px solid #444;
+      padding-top: 15px;
+    }
+    .channel-list {
+      max-height: 150px;
+      overflow-y: auto;
+      margin: 10px 0;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 5px;
+      background-color: #2a2a2a;
+    }
+    .channel-item {
+      padding: 5px;
+      border-bottom: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .channel-item:last-child {
+      border-bottom: none;
+    }
+    .channel-input {
+      display: flex;
+      margin-top: 10px;
+    }
+    #channel-name {
+      flex-grow: 1;
+      padding: 8px;
+      border: none;
+      border-radius: 4px 0 0 4px;
+      background-color: #333;
+      color: #fff;
+    }
+    #add-channel {
+      background-color: #2196F3;
+      color: white;
+      border: none;
+      padding: 8px 15px;
+      border-radius: 0 4px 4px 0;
+      cursor: pointer;
+    }
+    .remove-channel {
+      background-color: #f44336;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      padding: 2px 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .mode-selector {
+      margin: 15px 0;
+    }
+    .mode-label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: bold;
+    }
+    .radio-option {
+      margin-bottom: 5px;
+    }
+    .info {
+      font-size: 12px;
+      color: #aaa;
+      margin-top: 15px;
+      text-align: center;
+    }
+    .version {
+      font-size: 11px;
+      color: #777;
+      margin-top: 5px;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon48.png" alt="Logo" class="logo">
+    <h1 class="title">YouTube 狼人殺遮蔽助手</h1>
+  </div>
+  
+  <div class="status">
+    <span class="status-text">目前狀態:</span>
+    <span id="status-value">已停用</span>
+  </div>
+  
+  <button id="toggle" class="toggle-button">開啟遮蔽</button>
+  
+  <div class="settings">
+    <div class="mode-selector">
+      <span class="mode-label">遮蔽模式:</span>
+      <div class="radio-option">
+        <input type="radio" id="mode-all" name="block-mode" value="all">
+        <label for="mode-all">套用於所有頻道</label>
+      </div>
+      <div class="radio-option">
+        <input type="radio" id="mode-selected" name="block-mode" value="selected">
+        <label for="mode-selected">僅套用於選定頻道</label>
+      </div>
+    </div>
+    
+    <div id="channel-section">
+      <div>已選擇的頻道：</div>
+      <div class="channel-list" id="channel-list">
+        <!-- 動態填入頻道列表 -->
+      </div>
+      <div class="channel-input">
+        <input type="text" id="channel-name" placeholder="輸入頻道名稱 (例如: @頻道名稱)">
+        <button id="add-channel">新增</button>
+      </div>
+    </div>
+  </div>
+  
+  <div class="info">
+    此遮蔽功能僅在 YouTube 上使用時有效
+  </div>
+  
+  <div class="version">版本 1.1</div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
