@@ -44,37 +44,37 @@
 ## 🚀 安裝指南
 
 ### 從 Chrome Web Store 安裝（推薦）
-1. 訪問 Chrome Web Store
-2. 搜索「YouTube 狼人殺遮蔽助手」
-3. 點擊「加到 Chrome」進行安裝
+1. 進到 Chrome Web Store
+2. 搜尋「YouTube 狼人殺遮蔽助手」
+3. 點擊「加到 Chrome」安裝
 
-### 手動安裝開發版本
-1. 下載或克隆此專案到本地
+### 手動安裝開發版
+1. 下載或複製此專案到本機
 ```bash
 git clone https://github.com/yourusername/youtube-werewolf-blocker.git
 ```
 
-2. 打開 Chrome 瀏覽器，前往 `chrome://extensions/`
+2. 打開 Chrome 瀏覽器，進到 `chrome://extensions/`
 
-3. 開啟右上角的「開發人員模式」
+3. 開啟右上角的「開發者模式」
 
 4. 點擊「載入未封裝項目」
 
 5. 選擇專案資料夾
 
-6. 擴充功能即可生效
+6. 擴充功能就會生效
 
-## 🎮 使用指南
+## 🎮 使用說明
 
 ### 基本使用
-1. **啟用功能**：點擊瀏覽器工具列的擴充功能圖示，開啟遮蔽功能
-2. **觀看影片**：前往 YouTube 狼人殺影片頁面
-3. **自動遮蔽**：擴充功能會自動在影片播放器兩側顯示遮蔽面板
+1. **開啟功能**：點擊瀏覽器工具列的擴充功能圖示，開啟遮蔽功能
+2. **看影片**：進到 YouTube 狼人殺影片頁面
+3. **自動遮蔽**：擴充功能會自動在影片播放機兩側顯示遮蔽面板
 
-### 進階控制
-- **個別區域控制**：點擊各區域按鈕可獨立開啟/關閉遮蔽
+### 進階操作
+- **個別區域控制**：點擊各區域按鈕可個別開啟/關閉遮蔽
 - **批量控制**：使用頂部中央按鈕一鍵控制所有上警區域
-- **頻道設定**：在彈出面板中管理特定頻道的遮蔽規則
+- **頻道設定**：在彈出式面板中管理特定頻道的遮蔽規則
 - **版面調整**：展開「📐 版面設定」區塊，使用 Slider 調整容器位置、大小和區域比例
 - **編輯模式**：點擊「🔧 開啟編輯模式」，各區域將以彩色框線和半透明背景顯示：
   - 紅色框線 + 紅色半透明 = 身分區域
@@ -82,16 +82,16 @@ git clone https://github.com/yourusername/youtube-werewolf-blocker.git
   - 藍色框線 + 藍色半透明 = 上警區域
   - 黃色虛線 = 面板邊界
 
-### 快捷鍵操作
+### 快捷操作
 - 滑鼠懸停在身分區域上可顯示控制按鈕
 - 訊息區域關閉時會自動關閉對應的上警區域
-- 支援拖拽調整（未來版本）
+- 支持拖曳調整（未來版本）
 
 ## ⚙️ 設定選項
 
 ### 遮蔽模式
-- **所有頻道**：對所有 YouTube 頻道啟用遮蔽
-- **指定頻道**：僅對加入清單的頻道啟用遮蔽
+- **所有頻道**：對所有 YouTube 頻道開啟遮蔽
+- **指定頻道**：僅對加入清單的頻道開啟遮蔽
 
 ### 區域控制
 - **身分區域**：遮蔽玩家身分標記
@@ -102,7 +102,7 @@ git clone https://github.com/yourusername/youtube-werewolf-blocker.git
 - **容器位置**：調整遮蔽容器的頂部偏移、高度、寬度和左右邊距
 - **區域比例**：自訂身分區域寬度、訊息/上警區域的高度比例
 - **控制按鈕**：調整上警控制按鈕的位置
-- **恢復預設**：一鍵恢復所有配置到預設值
+- **重設為預設值**：一鍵重設所有配置到預設值
 
 ## 🛠️ 開發資訊
 
@@ -140,23 +140,21 @@ youtube-werewolf-blocker/
 - 需要 YouTube 頁面完全載入後才能生效
 - 版面配置以百分比為單位，自動適應全螢幕和普通模式
 
-### 修復計劃
-- [ ] 新增 Firefox 支援
-- [ ] 優化載入速度
-- [ ] 新增自訂保存配置方案（預設值、寬螢幕等）
-- [ ] 新增按住 Shift 鍵拖拽調整位置功能
+### 優化計劃
+- [x] 優化載入速度
+- [ ] 跳過上帝與夜間環節功能
 
 ## 🤝 貢獻指南
 
 歡迎各種形式的貢獻！
 
 ### 回報問題
-1. 前往 [Issues](https://github.com/yourusername/youtube-werewolf-blocker/issues) 頁面
+1. 進到 [Issues](https://github.com/yourusername/youtube-werewolf-blocker/issues) 頁面
 2. 描述問題現象和重現步驟
 3. 提供瀏覽器版本和影片連結
 
 ### 提交修改
-1. Fork 此專案
+1. 複製分支此專案
 2. 建立功能分支 (`git checkout -b feature/amazing-feature`)
 3. 提交修改 (`git commit -m 'Add some amazing feature'`)
 4. 推送分支 (`git push origin feature/amazing-feature`)
@@ -164,14 +162,14 @@ youtube-werewolf-blocker/
 
 ### 開發環境設置
 ```bash
-# 克隆專案
+# 複製專案
 git clone https://github.com/yourusername/youtube-werewolf-blocker.git
 
 # 進入專案目錄
 cd youtube-werewolf-blocker
 
 # 載入到 Chrome 進行測試
-# 前往 chrome://extensions/ 並載入未封裝項目
+# 進到 chrome://extensions/ 並載入未封裝項目
 ```
 
 ## 📝 更新日誌

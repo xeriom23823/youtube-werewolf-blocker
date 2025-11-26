@@ -9,6 +9,36 @@ let blockerPanels = {}; // 儲存各遮蔽面板的狀態 (1-12號)
 let layoutConfig = {}; // 儲存版面配置
 let editMode = false; // 版面編輯模式
 let isUpdatingBlockers = false; // 防止重複更新的旗標
+let isInitialized = false; // 初始化完成標記
+
+// ===== DOM 快取 =====
+const domCache = {
+    videoContainer: null,
+    videoElement: null,
+    watchFlexy: null,
+    lastCacheTime: 0
+};
+
+// 快取有效期 (毫秒)
+const CACHE_DURATION = 2000;
+
+// 獲取快取的 DOM 元素
+function getCachedElement(key, selector) {
+    const now = Date.now();
+    if (!domCache[key] || now - domCache.lastCacheTime > CACHE_DURATION) {
+        domCache[key] = document.querySelector(selector);
+        domCache.lastCacheTime = now;
+    }
+    return domCache[key];
+}
+
+// 清除 DOM 快取
+function clearDomCache() {
+    domCache.videoContainer = null;
+    domCache.videoElement = null;
+    domCache.watchFlexy = null;
+    domCache.lastCacheTime = 0;
+}
 
 // ===== 版面配置預設值 =====
 function getDefaultLayoutConfig() {
@@ -51,23 +81,27 @@ function initBlockerPanels() {
 initBlockerPanels();
 
 // ===== 輔助判斷函數 =====
-// 檢查當前是否在觀看影片頁面
+// 檢查當前是否在觀看影片頁面 (使用快取)
+let cachedIsWatchPage = null;
+let lastUrlCheck = '';
+
 function isWatchPage() {
-    return window.location.href.includes('/watch');
+    const currentUrl = window.location.href;
+    if (currentUrl !== lastUrlCheck) {
+        lastUrlCheck = currentUrl;
+        cachedIsWatchPage = currentUrl.includes('/watch');
+    }
+    return cachedIsWatchPage;
 }
 
 // 檢查當前頻道是否應該啟用遮蔽
 function shouldEnableBlocker() {
     if (!blockerEnabled) return false;
     if (blockMode === 'all') return true;
+    if (selectedChannels.length === 0) return false;
     
     const currentChannel = getCurrentChannelId();
-    if (currentChannel && selectedChannels.includes(currentChannel)) {
-        console.log("當前頻道在選定列表中，啟用遮蔽");
-        return true;
-    }
-    
-    return false;
+    return currentChannel && selectedChannels.includes(currentChannel);
 }
 
 // 獲取當前頻道ID
@@ -100,21 +134,24 @@ function getCurrentChannelId() {
 
 // 檢測全螢幕模式
 function isFullscreenMode() {
-    // YouTube 特定全螢幕模式檢測
-    if (document.querySelector('.ytp-fullscreen') || 
-        document.querySelector('ytd-watch-flexy[theater]') ||
-        document.querySelector('.ytd-player-fullscreen')) {
+    // 快速檢查 document.fullscreenElement
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
         return true;
     }
     
-    // 檢查影片播放器尺寸佔據整個視窗的情況
-    const playerElement = document.querySelector('ytd-player');
+    // YouTube 特定全螢幕模式檢測 - 使用快取
+    const watchFlexy = getCachedElement('watchFlexy', 'ytd-watch-flexy');
+    if (watchFlexy?.hasAttribute('theater') || watchFlexy?.hasAttribute('fullscreen')) {
+        return true;
+    }
+    
+    // 檢查影片播放器尺寸
+    const playerElement = getCachedElement('videoContainer', 'ytd-player');
     if (playerElement) {
         const playerRect = playerElement.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
         
-        // 播放器尺寸超過視窗90%視為全螢幕
         if ((playerRect.width / viewportWidth) > 0.9 && 
             (playerRect.height / viewportHeight) > 0.9) {
             return true;
@@ -127,22 +164,22 @@ function isFullscreenMode() {
 // ===== 狀態管理函數 =====
 // 載入遮蔽器狀態
 function loadBlockerStatus() {
-    chrome.storage?.sync.get({ 
-        'werewolfBlockerEnabled': false,
-        'werewolfBlockMode': 'all',
-        'werewolfSelectedChannels': [],
-        'werewolfBlockerPanels': null,
-        'werewolfLayoutConfig': null
-    }, function(result) {
-        blockerEnabled = result.werewolfBlockerEnabled;
-        blockMode = result.werewolfBlockMode;
-        selectedChannels = result.werewolfSelectedChannels;
+    chrome.storage?.sync.get([
+        'werewolfBlockerEnabled',
+        'werewolfBlockMode',
+        'werewolfSelectedChannels',
+        'werewolfBlockerPanels',
+        'werewolfLayoutConfig'
+    ], function(result) {
+        blockerEnabled = result.werewolfBlockerEnabled ?? false;
+        blockMode = result.werewolfBlockMode ?? 'all';
+        selectedChannels = result.werewolfSelectedChannels ?? [];
         
         // 如果有儲存的面板狀態，則載入
         if (result.werewolfBlockerPanels) {
             blockerPanels = result.werewolfBlockerPanels;
         } else {
-            initBlockerPanels(); // 否則初始化
+            initBlockerPanels();
         }
         
         // 載入版面配置
@@ -152,26 +189,14 @@ function loadBlockerStatus() {
             layoutConfig = getDefaultLayoutConfig();
         }
         
-        console.log("讀取到的插件狀態:", {
-            enabled: blockerEnabled,
-            mode: blockMode,
-            channels: selectedChannels,
-            panels: blockerPanels,
-            layout: layoutConfig
-        });
+        isInitialized = true;
         
-        resetBlockerPanels();
-        
-        // 根據狀態顯示或隱藏遮蔽層
-        if (isWatchPage()) {
-            if (shouldEnableBlocker()) {
-                hideIdentityInfo();
-            } else {
-                removeBlockers();
+        // 使用 requestAnimationFrame 進行 UI 更新
+        requestAnimationFrame(() => {
+            if (isWatchPage()) {
+                shouldEnableBlocker() ? hideIdentityInfo() : removeBlockers();
             }
-        } else {
-            removeBlockers();
-        }
+        });
     });
 }
 
@@ -305,65 +330,61 @@ function hideIdentityInfo() {
             return;
         }
 
-        // 找到 YouTube 影片播放器容器
-        const videoContainer = document.querySelector("ytd-player");
+        // 使用快取獲取影片播放器容器
+        const videoContainer = getCachedElement('videoContainer', 'ytd-player');
         if (!videoContainer) {
-            console.log("找不到影片播放器容器");
             return;
         }
 
-        // 找到實際的影片元素
-        const videoElement = videoContainer.querySelector("video");
-        if (!videoElement) {
-            console.log("找不到影片元素");
+        // 獲取影片元素
+        if (!domCache.videoElement) {
+            domCache.videoElement = videoContainer.querySelector('video');
+        }
+        if (!domCache.videoElement) {
             removeBlockers();
             return;
         }
 
-        // 如果插件禁用，則移除遮蔽層並返回
         if (!blockerEnabled) {
             removeBlockers();
             return;
         }
         
-        // 檢測全螢幕模式
         const isFullscreen = isFullscreenMode();
-        console.log("全螢幕模式檢測: ", isFullscreen);
         
         // 移除之前的遮蔽層
         removeBlockers();
+        
+        // 使用 DocumentFragment 批次創建 DOM
+        const fragment = document.createDocumentFragment();
         
         // 創建遮蔽層容器
         const [leftMainBlocker, rightMainBlocker] = createMainBlockers(isFullscreen);
         
         // 創建左側6個遮蔽面板
         for (let i = 1; i <= 6; i++) {
-            const panel = createBlockerPanel(i, isFullscreen, 'left');
-            leftMainBlocker.appendChild(panel);
+            leftMainBlocker.appendChild(createBlockerPanel(i, isFullscreen, 'left'));
         }
         
         // 創建右側6個遮蔽面板
         for (let i = 7; i <= 12; i++) {
-            const panel = createBlockerPanel(i, isFullscreen, 'right');
-            rightMainBlocker.appendChild(panel);
+            rightMainBlocker.appendChild(createBlockerPanel(i, isFullscreen, 'right'));
         }
+        
+        fragment.appendChild(leftMainBlocker);
+        fragment.appendChild(rightMainBlocker);
         
         // 創建中間上方的上警區域統一控制按鈕
-        createVoteControlButton(isFullscreen);
+        const voteButton = createVoteControlButton(isFullscreen);
+        if (voteButton) fragment.appendChild(voteButton);
         
-        // 將容器添加到適合的父元素
-        if (isFullscreen) {
-            document.body.appendChild(leftMainBlocker);
-            document.body.appendChild(rightMainBlocker);
-            console.log("已掛載全螢幕模式遮蔽層");
-        } else {
-            videoContainer.appendChild(leftMainBlocker);
-            videoContainer.appendChild(rightMainBlocker);
-            console.log("已掛載非全螢幕模式遮蔽層");
-        }
+        // 一次性添加到 DOM
+        const parent = isFullscreen ? document.body : videoContainer;
+        parent.appendChild(fragment);
+        
     } catch (error) {
         console.error("YouTube 狼人殺遮蔽助手發生錯誤:", error);
-        removeBlockers(); // 出錯時移除遮蔽層以避免用戶體驗問題
+        removeBlockers();
     }
 }
 
@@ -761,15 +782,12 @@ function forceUpdateBlockers() {
 // 創建中間上方的上警區域統一控制按鈕
 function createVoteControlButton(isFullscreen) {
     // 移除舊的按鈕（如果存在）
-    const oldButton = document.getElementById('vote-control-button');
-    if (oldButton) {
-        oldButton.remove();
-    }
+    const oldButton = document.getElementById('vote-control-container');
+    if (oldButton) oldButton.remove();
 
     // 檢查是否有所有面板的上警狀態
     let allVoteEnabled = true;
     for (let i = 1; i <= 12; i++) {
-        // 只考慮訊息區域開啟的面板
         if (blockerPanels[i].message && !blockerPanels[i].vote) {
             allVoteEnabled = false;
             break;
@@ -780,7 +798,6 @@ function createVoteControlButton(isFullscreen) {
     const buttonContainer = document.createElement('div');
     buttonContainer.id = 'vote-control-container';
     
-    // 從 layoutConfig 讀取上警按鈕位置
     const topValue = isFullscreen ? `${layoutConfig.voteButtonTop}vh` : `${layoutConfig.voteButtonTop}%`;
     
     Object.assign(buttonContainer.style, {
@@ -815,13 +832,10 @@ function createVoteControlButton(isFullscreen) {
         fontSize: '13px'
     });
 
-    // 直接註冊點擊事件 - 每次點擊時實時計算狀態
     button.addEventListener('click', function(event) {
         event.preventDefault();
         event.stopPropagation();
-        console.log("上警控制按鈕點擊");
         
-        // 實時計算當前狀態
         let currentAllVoteEnabled = true;
         for (let i = 1; i <= 12; i++) {
             if (blockerPanels[i].message && !blockerPanels[i].vote) {
@@ -830,20 +844,11 @@ function createVoteControlButton(isFullscreen) {
             }
         }
         
-        // 切換到相反狀態
         toggleAllVoteBlockers(!currentAllVoteEnabled);
     }, true);
 
-    // 組合元素
     buttonContainer.appendChild(button);
-
-    // 添加到 DOM
-    const parent = isFullscreen ? document.body : document.querySelector("ytd-player");
-    if (parent) {
-        parent.appendChild(buttonContainer);
-    }
-
-    return button;
+    return buttonContainer;
 }
 
 // ===== UI 更新函數 =====
@@ -1072,174 +1077,109 @@ const debouncedHideIdentityInfo = debounce(hideIdentityInfo, 150);
 function setupURLChangeListener() {
     let lastURL = window.location.href;
     
-    // 監聽 URL 變化
-    const urlObserver = new MutationObserver(() => {
+    // 使用 Navigation API (如果可用) 或 popstate
+    window.addEventListener('popstate', handleURLChange);
+    
+    // 監聽 URL 變化 - 合併到 unifiedObserver 中，此處只處理 history API
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+    
+    history.pushState = function(...args) {
+        originalPushState.apply(this, args);
+        handleURLChange();
+    };
+    
+    history.replaceState = function(...args) {
+        originalReplaceState.apply(this, args);
+        handleURLChange();
+    };
+    
+    function handleURLChange() {
         if (window.location.href !== lastURL) {
             lastURL = window.location.href;
-            console.log("URL 變化檢測到:", lastURL);
+            clearDomCache();
+            cachedIsWatchPage = null;
             
-            // URL 變化時重置面板狀態並更新遮蔽
+            // URL 變化時重置面板狀態
             resetBlockerPanels();
             
-            if (isWatchPage()) {
-                setTimeout(() => {
+            // 使用 requestAnimationFrame 而非 setTimeout
+            requestAnimationFrame(() => {
+                if (isWatchPage()) {
                     shouldEnableBlocker() ? hideIdentityInfo() : removeBlockers();
-                }, 500);
-            } else {
-                removeBlockers();
-            }
+                } else {
+                    removeBlockers();
+                }
+            });
         }
-    });
-    
-    // 監聽影響 URL 更改的 DOM 變化
-    const titleElement = document.querySelector('head > title');
-    if (titleElement) {
-        urlObserver.observe(titleElement, { subtree: true, characterData: true, childList: true });
     }
 }
 
 // ===== 事件監聽設置 =====
 // 設置全螢幕相關的事件監聽
 function setupFullscreenEventListeners() {
-    // 監聽標準全螢幕事件
-    const fullscreenEvents = [
-        'fullscreenchange', 
-        'webkitfullscreenchange', 
-        'mozfullscreenchange', 
-        'MSFullscreenChange'
-    ];
-    
-    fullscreenEvents.forEach(eventName => {
-        document.addEventListener(eventName, () => {
-            console.log(`${eventName} 事件觸發`);
-            if (isWatchPage() && blockerEnabled) {
-                setTimeout(hideIdentityInfo, 100);
-            }
-        });
-    });
-    
-    // 監聽YouTube特定的全螢幕相關按鈕點擊
-    document.addEventListener('click', (e) => {
-        const fullscreenTargets = [
-            '.ytp-fullscreen-button', 
-            '.ytp-size-button',
-            '.ytp-miniplayer-button',
-            '[aria-label*="全螢幕"]',
-            '[title*="全螢幕"]'
-        ];
-        
-        const clickedFullscreenElement = fullscreenTargets.some(selector => 
-            e.target.matches?.(selector) || e.target.closest?.(selector));
-            
-        if (clickedFullscreenElement && isWatchPage() && blockerEnabled) {
-            console.log("YouTube全螢幕相關按鈕點擊");
-            setTimeout(hideIdentityInfo, 200);
+    // 監聽標準全螢幕事件 - 使用單一處理器
+    const handleFullscreenChange = () => {
+        if (isWatchPage() && blockerEnabled) {
+            requestAnimationFrame(hideIdentityInfo);
         }
-    });
+    };
+    
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    
+    // 監聽YouTube特定的全螢幕相關按鈕點擊 - 使用事件委派
+    document.addEventListener('click', (e) => {
+        const target = e.target;
+        if (target.matches?.('.ytp-fullscreen-button, .ytp-size-button') || 
+            target.closest?.('.ytp-fullscreen-button, .ytp-size-button')) {
+            if (isWatchPage() && blockerEnabled) {
+                // 使用 requestAnimationFrame 而非 setTimeout
+                requestAnimationFrame(() => {
+                    setTimeout(hideIdentityInfo, 50);
+                });
+            }
+        }
+    }, { passive: true });
 }
 
 // 監聽劇場模式切換
 function setupTheaterModeDetection() {
-    const theaterModeObserver = new MutationObserver(mutations => {
-        for (const mutation of mutations) {
-            if (mutation.type === 'attributes' && 
-                mutation.attributeName === 'theater' && 
-                isWatchPage() && blockerEnabled) {
-                console.log("劇場模式變化偵測到");
-                setTimeout(hideIdentityInfo, 200);
-                break;
-            }
+    const watchFlexy = getCachedElement('watchFlexy', 'ytd-watch-flexy');
+    if (!watchFlexy) return;
+    
+    const theaterModeObserver = new MutationObserver(() => {
+        if (isWatchPage() && blockerEnabled) {
+            requestAnimationFrame(hideIdentityInfo);
         }
     });
     
-    // 監聽 ytd-watch-flexy 的 theater 屬性變化
-    const watchFlexy = document.querySelector('ytd-watch-flexy');
-    if (watchFlexy) {
-        theaterModeObserver.observe(watchFlexy, { 
-            attributes: true, 
-            attributeFilter: ['theater'] 
-        });
-    } else {
-        // 如果元素不存在，等待它出現
-        const bodyObserver = new MutationObserver(debounce(() => {
-            const watchElement = document.querySelector('ytd-watch-flexy');
-            if (watchElement) {
-                theaterModeObserver.observe(watchElement, { 
-                    attributes: true, 
-                    attributeFilter: ['theater'] 
-                });
-                bodyObserver.disconnect();
-            }
-        }, 500));
-        
-        bodyObserver.observe(document.body, { 
-            childList: true, 
-            subtree: true 
-        });
-    }
+    theaterModeObserver.observe(watchFlexy, { 
+        attributes: true, 
+        attributeFilter: ['theater', 'fullscreen'] 
+    });
 }
 
-// 全螢幕偵測設置 - 增強版
+// 全螢幕偵測設置 - 簡化版
 function setupYouTubeFullscreenDetection() {
-    console.log("設置 YouTube 全螢幕偵測");
-    
     if (!isWatchPage()) return;
     
-    // 監聽播放器容器
-    const playerContainer = document.querySelector('ytd-player');
-    if (playerContainer) {
-        console.log("找到播放器容器，設置監聽");
-        
-        // 使用 ResizeObserver 監聽播放器容器大小變化
-        const resizeObserver = new ResizeObserver(debounce(() => {
-            console.log("播放器大小變化偵測到");
-            if (isWatchPage() && blockerEnabled) {
-                setTimeout(hideIdentityInfo, 200);
-            }
-        }, 150));
-        
-        resizeObserver.observe(playerContainer);
-        
-        // 監聽播放器容器類別變化
-        const classObserver = new MutationObserver(mutations => {
-            for (const mutation of mutations) {
-                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-                    console.log("播放器類別變化偵測到");
-                    if (isWatchPage() && blockerEnabled) {
-                        setTimeout(hideIdentityInfo, 200);
-                    }
-                    break;
-                }
-            }
-        });
-        
-        classObserver.observe(playerContainer, { 
-            attributes: true, 
-            attributeFilter: ['class'] 
-        });
-        
-        // 同時監聽影片元素的大小變化
-        const videoElement = playerContainer.querySelector('video');
-        if (videoElement) {
-            resizeObserver.observe(videoElement);
+    const playerContainer = getCachedElement('videoContainer', 'ytd-player');
+    if (!playerContainer) return;
+    
+    // 使用單一 ResizeObserver 監聽大小變化
+    const resizeObserver = new ResizeObserver(debounce(() => {
+        if (isWatchPage() && blockerEnabled) {
+            requestAnimationFrame(hideIdentityInfo);
         }
-        
-        // 監聽控制按鈕
-        const setupButtonListener = (selector, name) => {
-            const button = document.querySelector(selector);
-            if (button) {
-                button.addEventListener('click', () => {
-                    console.log(`${name}按鈕點擊事件捕獲`);
-                    if (isWatchPage() && blockerEnabled) {
-                        setTimeout(hideIdentityInfo, 200);
-                    }
-                });
-            }
-        };
-        
-        // 設置按鈕監聽
-        setupButtonListener('.ytp-fullscreen-button', '全螢幕');
-        setupButtonListener('.ytp-size-button', '劇場模式');
+    }, 200));
+    
+    resizeObserver.observe(playerContainer);
+    
+    // 監聽影片元素大小變化
+    const videoElement = playerContainer.querySelector('video');
+    if (videoElement) {
+        resizeObserver.observe(videoElement);
     }
     
     // 設置劇場模式監聽
@@ -1248,81 +1188,99 @@ function setupYouTubeFullscreenDetection() {
 
 // ===== 初始化和主要事件監聽 =====
 // 當 YouTube 網頁載入時執行
-window.addEventListener('load', function() {
+function initializeExtension() {
+    if (isInitialized) return;
+    
     // 載入遮蔽器狀態
     loadBlockerStatus();
     
     // 設置 URL 變化監聽
     setupURLChangeListener();
     
-    // 設置全螢幕事件監聽
-    setupFullscreenEventListeners();
-    
-    // 稍微延遲初始化，確保頁面完全載入
-    setTimeout(() => {
-        if (isWatchPage() && shouldEnableBlocker()) {
-            hideIdentityInfo();
-        }
-        
-        setupYouTubeFullscreenDetection();
-    }, 500);
-});
+    // 設置全螢幕事件監聽（延遲執行，非關鍵路徑）
+    if (typeof requestIdleCallback !== 'undefined') {
+        requestIdleCallback(setupFullscreenEventListeners);
+        requestIdleCallback(setupYouTubeFullscreenDetection);
+    } else {
+        setTimeout(setupFullscreenEventListeners, 100);
+        setTimeout(setupYouTubeFullscreenDetection, 200);
+    }
+}
 
-// 監聽視窗大小變更事件
+// 使用 DOMContentLoaded 更早啟動
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeExtension, { once: true });
+} else {
+    initializeExtension();
+}
+
+// 監聽視窗大小變更事件 - 使用 requestAnimationFrame 優化
+let resizeScheduled = false;
 window.addEventListener('resize', () => {
-    if (isWatchPage() && shouldEnableBlocker()) {
-        debouncedHideIdentityInfo();
+    if (!resizeScheduled && isWatchPage() && shouldEnableBlocker()) {
+        resizeScheduled = true;
+        requestAnimationFrame(() => {
+            debouncedHideIdentityInfo();
+            resizeScheduled = false;
+        });
     }
 });
 
-// 監聽網頁動態變更（如 AJAX 加載新影片）- 只檢查遮蔽層是否存在
+// 統一的 MutationObserver - 合併多個觀察器
 let lastMutationCheck = 0;
-const observer = new MutationObserver(() => {
-    // 限制檢查頻率，每 500ms 最多檢查一次
+const MUTATION_THROTTLE = 1000; // 提高到 1 秒
+
+const unifiedObserver = new MutationObserver((mutations) => {
     const now = Date.now();
-    if (now - lastMutationCheck < 500) return;
+    if (now - lastMutationCheck < MUTATION_THROTTLE) return;
+    
+    // 檢查是否有需要處理的變化
+    let needsUpdate = false;
+    let urlChanged = false;
+    
+    for (const mutation of mutations) {
+        // 檢查 URL 變化（通過 title 變化）
+        if (mutation.target.nodeName === 'TITLE') {
+            urlChanged = true;
+            break;
+        }
+        // 檢查播放器相關變化
+        if (mutation.target.id === 'movie_player' || 
+            mutation.target.classList?.contains('html5-video-player')) {
+            needsUpdate = true;
+            break;
+        }
+    }
+    
     lastMutationCheck = now;
     
+    if (urlChanged) {
+        clearDomCache();
+        cachedIsWatchPage = null;
+    }
+    
     if (isWatchPage() && shouldEnableBlocker() && !isUpdatingBlockers) {
-        // 只檢查遮蔽層是否存在，不重建
         const existingBlockers = document.querySelectorAll('.identity-blocker-container');
-        if (existingBlockers.length === 0) {
-            console.log('MutationObserver: 遮蔽層不存在，重新創建');
-            hideIdentityInfo();
+        if (existingBlockers.length === 0 || needsUpdate) {
+            requestAnimationFrame(hideIdentityInfo);
         }
     }
 });
 
-observer.observe(document.body, { 
+// 只觀察必要的變化
+unifiedObserver.observe(document.body, { 
     childList: true, 
     subtree: true,
     attributes: false,
     characterData: false
 });
 
-// 使用較低頻率的檢查來確保遮蔽層正常顯示（只在遮蔽層不存在時才重建）
-setInterval(() => {
-    if (isWatchPage() && blockerEnabled && !isUpdatingBlockers) {
-        // 檢查遮蔽層是否存在，只有不存在時才重建
+// 使用 visibility change 代替 setInterval 進行檢查
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && isWatchPage() && blockerEnabled) {
         const existingBlockers = document.querySelectorAll('.identity-blocker-container');
         if (existingBlockers.length === 0) {
-            console.log('定時檢查: 遮蔽層不存在，重新創建');
-            hideIdentityInfo();
+            requestAnimationFrame(hideIdentityInfo);
         }
     }
-}, 3000); // 延長到 3 秒
-
-// 在 DOM 變化時重新檢查是否需要設置檢測
-const setupObserver = new MutationObserver(debounce(() => {
-    if (document.querySelector('ytd-player') && 
-        !window._fullscreenDetectionSetup &&
-        isWatchPage()) {
-        setupYouTubeFullscreenDetection();
-        window._fullscreenDetectionSetup = true;
-    }
-}, 1000));
-
-setupObserver.observe(document.body, { 
-    childList: true, 
-    subtree: true 
 });
