@@ -6,6 +6,34 @@ let blockerEnabled = false; // 預設不啟用
 let blockMode = 'all'; // 預設為所有頻道
 let selectedChannels = []; // 儲存選定的頻道
 let blockerPanels = {}; // 儲存各遮蔽面板的狀態 (1-12號)
+let layoutConfig = {}; // 儲存版面配置
+let editMode = false; // 版面編輯模式
+let isUpdatingBlockers = false; // 防止重複更新的旗標
+
+// ===== 版面配置預設值 =====
+function getDefaultLayoutConfig() {
+    return {
+        // 遮蔽容器位置與大小 (以百分比為單位)
+        containerTop: 8,           // 容器頂部偏移 (%)
+        containerHeight: 87,       // 容器高度 (%)
+        containerWidth: 12,        // 容器寬度 (%)
+        containerLeftOffset: 7,    // 左側容器距離左邊界 (%)
+        containerRightOffset: 7,   // 右側容器距離右邊界 (%)
+        
+        // 上警控制按鈕位置
+        voteButtonTop: 3,          // 上警按鈕頂部偏移 (%)
+        
+        // 區域比例 (身分區域寬度佔容器的比例)
+        identityWidthRatio: 20.83, // 身分區域寬度比例 (%)
+        
+        // 訊息與上警區域的高度比例 (flex 值)
+        messageFlexRatio: 2,       // 訊息區域 flex 值
+        voteFlexRatio: 1           // 上警區域 flex 值
+    };
+}
+
+// 初始化版面配置
+layoutConfig = getDefaultLayoutConfig();
 
 // ===== 初始化函數 =====
 // 初始化每個遮蔽面板狀態為啟用
@@ -103,7 +131,8 @@ function loadBlockerStatus() {
         'werewolfBlockerEnabled': false,
         'werewolfBlockMode': 'all',
         'werewolfSelectedChannels': [],
-        'werewolfBlockerPanels': null
+        'werewolfBlockerPanels': null,
+        'werewolfLayoutConfig': null
     }, function(result) {
         blockerEnabled = result.werewolfBlockerEnabled;
         blockMode = result.werewolfBlockMode;
@@ -116,11 +145,19 @@ function loadBlockerStatus() {
             initBlockerPanels(); // 否則初始化
         }
         
+        // 載入版面配置
+        if (result.werewolfLayoutConfig) {
+            layoutConfig = { ...getDefaultLayoutConfig(), ...result.werewolfLayoutConfig };
+        } else {
+            layoutConfig = getDefaultLayoutConfig();
+        }
+        
         console.log("讀取到的插件狀態:", {
             enabled: blockerEnabled,
             mode: blockMode,
             channels: selectedChannels,
-            panels: blockerPanels
+            panels: blockerPanels,
+            layout: layoutConfig
         });
         
         resetBlockerPanels();
@@ -166,6 +203,30 @@ function resetBlockerPanels() {
     saveBlockerPanelsState();
 }
 
+// ===== 版面配置管理函數 =====
+// 載入版面配置
+function loadLayoutConfig() {
+    chrome.storage?.sync.get({ 'werewolfLayoutConfig': null }, function(result) {
+        if (result.werewolfLayoutConfig) {
+            layoutConfig = { ...getDefaultLayoutConfig(), ...result.werewolfLayoutConfig };
+        } else {
+            layoutConfig = getDefaultLayoutConfig();
+        }
+        console.log("讀取到的版面配置:", layoutConfig);
+    });
+}
+
+// 保存版面配置
+function saveLayoutConfig() {
+    chrome.storage?.sync.set({ 'werewolfLayoutConfig': layoutConfig });
+}
+
+// 重置版面配置為預設值
+function resetLayoutConfig() {
+    layoutConfig = getDefaultLayoutConfig();
+    saveLayoutConfig();
+}
+
 // ===== 事件處理函數 =====
 // 監聽來自 popup 的訊息
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
@@ -197,6 +258,39 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
             } else {
                 removeBlockers();
             }
+        }
+    } else if (request.action === 'updateLayoutConfig') {
+        console.log("收到更新版面配置請求:", request.layoutConfig);
+        layoutConfig = { ...getDefaultLayoutConfig(), ...request.layoutConfig };
+        saveLayoutConfig();
+        
+        // 立即重新繪製遮蔽層以應用新配置
+        if (isWatchPage() && shouldEnableBlocker()) {
+            hideIdentityInfo();
+        }
+    } else if (request.action === 'resetLayoutConfig') {
+        console.log("收到重置版面配置請求");
+        resetLayoutConfig();
+        
+        // 立即重新繪製遮蔽層以應用新配置
+        if (isWatchPage() && shouldEnableBlocker()) {
+            hideIdentityInfo();
+        }
+        
+        // 回傳預設配置給 popup
+        sendResponse({ layoutConfig: layoutConfig });
+        return true; // 表示會異步回應
+    } else if (request.action === 'getLayoutConfig') {
+        // 回傳當前版面配置給 popup
+        sendResponse({ layoutConfig: layoutConfig });
+        return true;
+    } else if (request.action === 'toggleEditMode') {
+        console.log("切換編輯模式:", request.enabled);
+        editMode = request.enabled;
+        
+        // 立即重新繪製遮蔽層以應用編輯模式
+        if (isWatchPage() && shouldEnableBlocker()) {
+            forceUpdateBlockers();
         }
     }
 });
@@ -281,19 +375,23 @@ function createMainBlockers(isFullscreen) {
     leftMainBlocker.className = "identity-blocker-container left";
     rightMainBlocker.className = "identity-blocker-container right";
     
+    // 從 layoutConfig 讀取配置數值
+    const topValue = isFullscreen ? `${layoutConfig.containerTop}vh` : `${layoutConfig.containerTop}%`;
+    const heightValue = isFullscreen ? `${layoutConfig.containerHeight}vh` : `${layoutConfig.containerHeight}%`;
+    
     // 設定容器的基本樣式
     const containerStyle = {
         position: isFullscreen ? "fixed" : "absolute",
         zIndex: "9999",
-        top: isFullscreen ? "8vh" : "8%",
-        height: isFullscreen ? "87vh" : "87%",
-        width: "12%",
+        top: topValue,
+        height: heightValue,
+        width: `${layoutConfig.containerWidth}%`,
         display: "flex",
         flexDirection: "column"
     };
     
-    Object.assign(leftMainBlocker.style, containerStyle, { left: "7%" });
-    Object.assign(rightMainBlocker.style, containerStyle, { right: "7%" });
+    Object.assign(leftMainBlocker.style, containerStyle, { left: `${layoutConfig.containerLeftOffset}%` });
+    Object.assign(rightMainBlocker.style, containerStyle, { right: `${layoutConfig.containerRightOffset}%` });
     
     return [leftMainBlocker, rightMainBlocker];
 }
@@ -304,11 +402,15 @@ function createBlockerPanel(panelNumber, isFullscreen, side) {
     panelContainer.className = `identity-blocker panel-${panelNumber}`;
     panelContainer.id = `blocker-panel-${panelNumber}`;
     
-    // 設定面板樣式
+    // 設定面板樣式 - 編輯模式時顯示框線
+    const borderStyle = editMode 
+        ? "2px dashed rgba(255, 255, 0, 0.8)" 
+        : "1px solid rgba(255, 255, 255, 0.1)";
+    
     Object.assign(panelContainer.style, {
         flex: "1",
         position: "relative",
-        border: "1px solid rgba(255, 255, 255, 0.1)",
+        border: borderStyle,
         display: "flex",
         flexDirection: side === 'left' ? "row" : "row-reverse", // 水平排列，根據側邊調整方向
         pointerEvents: "auto"
@@ -352,26 +454,29 @@ function createIdentitySection(panelNumber, side) {
     identityBlocker.className = `identity-section panel-${panelNumber}-identity`;
     identityBlocker.id = `blocker-panel-${panelNumber}-identity`;
     
+    // 計算身分區域寬度與訊息區域寬度
+    const identityWidth = layoutConfig.identityWidthRatio;
+    
     // 設定基本樣式
     const commonStyle = {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         position: "relative",
-        width: "20.83%", // 2.5% / 12% = 20.83%
+        width: `${identityWidth}%`,
         height: "100%"  // 身分區域通常佔據全高
     };
     
     Object.assign(identityBlocker.style, commonStyle, {
-        backgroundColor: blockerPanels[panelNumber].identity ? "rgba(0, 0, 0, 1.0)" : "transparent"
+        backgroundColor: getBlockerBackgroundColor(blockerPanels[panelNumber].identity, 'identity'),
+        border: editMode ? "1px solid rgba(255, 0, 0, 0.8)" : "none"
     });
     
     // 創建身分區域控制按鈕，設為預設隱藏，僅在滑鼠懸停時顯示
     const identityButton = createBlockerButton(
         blockerPanels[panelNumber].identity ? "關閉身分" : "開啟身分",
-        function(event) {
-            toggleBlockerSection(event, panelNumber, 'identity', identityBlocker, document.querySelector(`.panel-${panelNumber} .blocker-number`));
-        }
+        panelNumber,
+        'identity'
     );
     
     // 針對身分區域按鈕特殊處理 - 預設隱藏
@@ -399,11 +504,14 @@ function createMessageContainer(panelNumber) {
     const messageContainer = document.createElement("div");
     messageContainer.className = `message-container-${panelNumber}`;
     
+    // 計算訊息容器寬度 (100% - 身分區域寬度)
+    const messageContainerWidth = 100 - layoutConfig.identityWidthRatio;
+    
     Object.assign(messageContainer.style, {
         display: "flex",
         flexDirection: "column", // 垂直排列訊息和上警區域
         flex: "1", // 佔據剩餘空間
-        width: "79.17%" // 9.5% / 12% = 79.17%
+        width: `${messageContainerWidth}%`
     });
     
     return messageContainer;
@@ -420,23 +528,19 @@ function createMessageSection(panelNumber) {
         alignItems: "center",
         justifyContent: "center",
         position: "relative",
-        flex: "2" // 佔據訊息容器的66.6%高度
+        flex: String(layoutConfig.messageFlexRatio) // 從配置讀取 flex 值
     };
     
     Object.assign(messageBlocker.style, commonStyle, {
-        backgroundColor: blockerPanels[panelNumber].message ? "rgba(0, 0, 0, 1.0)" : "transparent"
+        backgroundColor: getBlockerBackgroundColor(blockerPanels[panelNumber].message, 'message'),
+        border: editMode ? "1px solid rgba(0, 255, 0, 0.8)" : "none"
     });
     
     // 創建訊息區域控制按鈕
     const messageButton = createBlockerButton(
         blockerPanels[panelNumber].message ? "關閉訊息" : "開啟訊息",
-        function(event) {
-            toggleBlockerSection(event, panelNumber, 'message', messageBlocker);
-            // 當訊息關閉時，同時關閉上警區域
-            if (!blockerPanels[panelNumber].message) {
-                toggleVoteBlocker(panelNumber, false);
-            }
-        }
+        panelNumber,
+        'message'
     );
     
     // 添加按鈕到訊息區域
@@ -456,11 +560,12 @@ function createVoteSection(panelNumber) {
         alignItems: "center",
         justifyContent: "center",
         position: "relative",
-        flex: "1" // 佔據訊息容器的33.3%高度
+        flex: String(layoutConfig.voteFlexRatio) // 從配置讀取 flex 值
     };
     
     Object.assign(voteBlocker.style, commonStyle, {
-        backgroundColor: blockerPanels[panelNumber].vote ? "rgba(0, 0, 0, 1.0)" : "transparent"
+        backgroundColor: getBlockerBackgroundColor(blockerPanels[panelNumber].vote, 'vote'),
+        border: editMode ? "1px solid rgba(0, 0, 255, 0.8)" : "none"
     });
     
     return voteBlocker;
@@ -490,31 +595,167 @@ function createNumberLabel(panelNumber, side) {
     return numberLabel;
 }
 
-// 創建按鈕輔助函數
-function createBlockerButton(text, clickHandler) {
+// 獲取遮蔽區域的背景顏色
+function getBlockerBackgroundColor(isEnabled, section) {
+    if (!isEnabled) return "transparent";
+    
+    // 編輯模式時使用半透明背景
+    if (editMode) {
+        switch (section) {
+            case 'identity':
+                return "rgba(255, 0, 0, 0.3)"; // 紅色半透明
+            case 'message':
+                return "rgba(0, 255, 0, 0.3)"; // 綠色半透明
+            case 'vote':
+                return "rgba(0, 0, 255, 0.3)"; // 藍色半透明
+            default:
+                return "rgba(0, 0, 0, 0.5)";
+        }
+    }
+    
+    return "rgba(0, 0, 0, 1.0)";
+}
+
+// 創建按鈕輔助函數 - 使用面板號碼和區域類型而非閉包
+function createBlockerButton(text, panelNumber, section) {
     const button = document.createElement("button");
     button.className = "blocker-toggle-button";
     button.textContent = text;
+    button.dataset.panelNumber = panelNumber;
+    button.dataset.section = section;
     
+    // 使用絕對定位避免影響布局
     Object.assign(button.style, {
-        padding: "3px 6px",
-        fontSize: "10px",
-        backgroundColor: "rgba(255, 255, 255, 0.3)",
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        padding: "5px 10px",
+        fontSize: "11px",
+        backgroundColor: "rgba(255, 255, 255, 0.4)",
         color: "white",
-        border: "none",
-        borderRadius: "3px",
+        border: "1px solid rgba(255, 255, 255, 0.5)",
+        borderRadius: "4px",
         cursor: "pointer",
         opacity: "1",
         pointerEvents: "auto",
-        zIndex: "10000",
-        margin: "2px"
+        zIndex: "10002",
+        fontWeight: "bold",
+        textShadow: "1px 1px 1px black",
+        whiteSpace: "nowrap"
     });
     
-    // 註冊事件處理
-    button.addEventListener("click", clickHandler);
-    button.addEventListener("mousedown", clickHandler);
+    // 使用命名函數而非匿名函數，並經由全局處理器
+    button.addEventListener("click", handleBlockerButtonClick, true);
     
     return button;
+}
+
+// 全局按鈕點擊處理器
+function handleBlockerButtonClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    
+    const button = event.currentTarget;
+    const panelNumber = parseInt(button.dataset.panelNumber);
+    const section = button.dataset.section;
+    
+    if (!panelNumber || !section) {
+        console.warn("按鈕缺少必要資料");
+        return;
+    }
+    
+    console.log(`按鈕點擊: 面板 ${panelNumber}, 區域 ${section}`);
+    
+    // 切換區域狀態
+    performToggleSection(panelNumber, section);
+}
+
+// 執行區域切換
+function performToggleSection(panelNumber, section) {
+    // 檢查面板號碼是否有效
+    if (!blockerPanels[panelNumber]) {
+        console.warn(`面板 ${panelNumber} 不存在`);
+        return;
+    }
+    
+    // 切換此面板的指定區域狀態
+    blockerPanels[panelNumber][section] = !blockerPanels[panelNumber][section];
+    
+    // 處理訊息與上警區域的聯動關係
+    if (section === 'message' && !blockerPanels[panelNumber].message) {
+        blockerPanels[panelNumber].vote = false;
+    }
+    
+    console.log(`${panelNumber}號面板 ${section} 遮蔽狀態:`, blockerPanels[panelNumber][section]);
+    
+    // 保存狀態
+    saveBlockerPanelsState();
+    
+    // 直接更新 DOM 而不是重建整個遮蔽層
+    updateSingleSectionVisual(panelNumber, section);
+    
+    // 更新中央控制按鈕狀態
+    updateVoteControlButton();
+}
+
+// 更新單一區域的視覺效果
+function updateSingleSectionVisual(panelNumber, section) {
+    const elementId = `blocker-panel-${panelNumber}-${section}`;
+    const element = document.getElementById(elementId);
+    
+    if (!element) {
+        console.warn(`找不到元素: ${elementId}`);
+        return;
+    }
+    
+    const isEnabled = blockerPanels[panelNumber][section];
+    
+    // 更新背景色
+    element.style.backgroundColor = getBlockerBackgroundColor(isEnabled, section);
+    
+    // 更新按鈕文字
+    const button = element.querySelector('.blocker-toggle-button');
+    if (button) {
+        const enableText = section === 'identity' ? "開啟身分" : 
+                          section === 'message' ? "開啟訊息" : "開啟上警";
+        const disableText = section === 'identity' ? "關閉身分" : 
+                           section === 'message' ? "關閉訊息" : "關閉上警";
+        button.textContent = isEnabled ? disableText : enableText;
+        
+        // 身分區域按鈕特殊處理
+        if (section === 'identity') {
+            button.style.display = isEnabled ? 'none' : 'block';
+        }
+    }
+    
+    // 更新數字標籤 (只適用於身分區域)
+    if (section === 'identity') {
+        const numberLabel = document.querySelector(`#blocker-panel-${panelNumber} .blocker-number`);
+        if (numberLabel) {
+            numberLabel.style.display = isEnabled ? 'block' : 'none';
+        }
+    }
+    
+    // 如果關閉訊息區域，同時更新上警區域
+    if (section === 'message' && !isEnabled) {
+        updateSingleSectionVisual(panelNumber, 'vote');
+    }
+}
+
+// 強制更新遮蔽層（用於版面配置變更或編輯模式切換）
+function forceUpdateBlockers() {
+    if (isUpdatingBlockers) return;
+    isUpdatingBlockers = true;
+    
+    removeBlockers();
+    
+    // 短暂延遲後重建
+    setTimeout(() => {
+        hideIdentityInfo();
+        isUpdatingBlockers = false;
+    }, 50);
 }
 
 // 創建中間上方的上警區域統一控制按鈕
@@ -539,9 +780,12 @@ function createVoteControlButton(isFullscreen) {
     const buttonContainer = document.createElement('div');
     buttonContainer.id = 'vote-control-container';
     
+    // 從 layoutConfig 讀取上警按鈕位置
+    const topValue = isFullscreen ? `${layoutConfig.voteButtonTop}vh` : `${layoutConfig.voteButtonTop}%`;
+    
     Object.assign(buttonContainer.style, {
         position: isFullscreen ? 'fixed' : 'absolute',
-        top: isFullscreen ? '3vh' : '3%',
+        top: topValue,
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: '10000',
@@ -561,25 +805,34 @@ function createVoteControlButton(isFullscreen) {
     button.textContent = allVoteEnabled ? '關閉所有上警區' : '開啟所有上警區';
     
     Object.assign(button.style, {
-        padding: '5px 10px',
-        backgroundColor: allVoteEnabled ? 'rgba(255, 100, 100, 0.8)' : 'rgba(100, 255, 100, 0.8)',
+        padding: '8px 15px',
+        backgroundColor: allVoteEnabled ? 'rgba(255, 100, 100, 0.9)' : 'rgba(100, 255, 100, 0.9)',
         color: 'black',
-        border: 'none',
+        border: '2px solid rgba(255, 255, 255, 0.5)',
         borderRadius: '4px',
         cursor: 'pointer',
         fontWeight: 'bold',
-        fontSize: '12px'
+        fontSize: '13px'
     });
 
-    // 註冊點擊事件
-    const voteToggleHandler = function(event) {
+    // 直接註冊點擊事件 - 每次點擊時實時計算狀態
+    button.addEventListener('click', function(event) {
         event.preventDefault();
         event.stopPropagation();
-        toggleAllVoteBlockers(!allVoteEnabled);
-    };
-    
-    button.addEventListener('click', voteToggleHandler);
-    button.addEventListener('mousedown', voteToggleHandler);
+        console.log("上警控制按鈕點擊");
+        
+        // 實時計算當前狀態
+        let currentAllVoteEnabled = true;
+        for (let i = 1; i <= 12; i++) {
+            if (blockerPanels[i].message && !blockerPanels[i].vote) {
+                currentAllVoteEnabled = false;
+                break;
+            }
+        }
+        
+        // 切換到相反狀態
+        toggleAllVoteBlockers(!currentAllVoteEnabled);
+    }, true);
 
     // 組合元素
     buttonContainer.appendChild(button);
@@ -599,6 +852,12 @@ function toggleBlockerSection(event, panelNumber, section, element, numberLabel)
     // 阻止事件冒泡，防止觸發到上層元素的事件
     event.stopPropagation();
     event.preventDefault();
+    
+    // 檢查面板號碼是否有效
+    if (!blockerPanels[panelNumber]) {
+        console.warn(`面板 ${panelNumber} 不存在`);
+        return;
+    }
     
     // 切換此面板的指定區域狀態
     blockerPanels[panelNumber][section] = !blockerPanels[panelNumber][section];
@@ -1016,10 +1275,21 @@ window.addEventListener('resize', () => {
     }
 });
 
-// 監聽網頁動態變更（如 AJAX 加載新影片），使用防抖動版本
+// 監聽網頁動態變更（如 AJAX 加載新影片）- 只檢查遮蔽層是否存在
+let lastMutationCheck = 0;
 const observer = new MutationObserver(() => {
-    if (isWatchPage() && shouldEnableBlocker()) {
-        debouncedHideIdentityInfo();
+    // 限制檢查頻率，每 500ms 最多檢查一次
+    const now = Date.now();
+    if (now - lastMutationCheck < 500) return;
+    lastMutationCheck = now;
+    
+    if (isWatchPage() && shouldEnableBlocker() && !isUpdatingBlockers) {
+        // 只檢查遮蔽層是否存在，不重建
+        const existingBlockers = document.querySelectorAll('.identity-blocker-container');
+        if (existingBlockers.length === 0) {
+            console.log('MutationObserver: 遮蔽層不存在，重新創建');
+            hideIdentityInfo();
+        }
     }
 });
 
@@ -1030,12 +1300,17 @@ observer.observe(document.body, {
     characterData: false
 });
 
-// 使用較低頻率的檢查來確保遮蔽層正常顯示
+// 使用較低頻率的檢查來確保遮蔽層正常顯示（只在遮蔽層不存在時才重建）
 setInterval(() => {
-    if (isWatchPage() && blockerEnabled) {
-        hideIdentityInfo();
+    if (isWatchPage() && blockerEnabled && !isUpdatingBlockers) {
+        // 檢查遮蔽層是否存在，只有不存在時才重建
+        const existingBlockers = document.querySelectorAll('.identity-blocker-container');
+        if (existingBlockers.length === 0) {
+            console.log('定時檢查: 遮蔽層不存在，重新創建');
+            hideIdentityInfo();
+        }
     }
-}, 2000);
+}, 3000); // 延長到 3 秒
 
 // 在 DOM 變化時重新檢查是否需要設置檢測
 const setupObserver = new MutationObserver(debounce(() => {

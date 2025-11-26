@@ -130,6 +130,165 @@
       margin-top: 5px;
       text-align: right;
     }
+    /* 版面設定區塊樣式 */
+    .layout-settings {
+      margin-top: 15px;
+      border-top: 1px solid #444;
+      padding-top: 15px;
+    }
+    .layout-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      padding: 8px 0;
+    }
+    .layout-header:hover {
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+    .layout-title {
+      font-weight: bold;
+      font-size: 14px;
+    }
+    .layout-toggle-icon {
+      font-size: 12px;
+      transition: transform 0.3s;
+    }
+    .layout-toggle-icon.expanded {
+      transform: rotate(180deg);
+    }
+    .layout-content {
+      display: none;
+      padding-top: 10px;
+    }
+    .layout-content.show {
+      display: block;
+    }
+    .layout-group {
+      margin-bottom: 15px;
+    }
+    .layout-group-title {
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #333;
+      padding-bottom: 4px;
+    }
+    .slider-item {
+      margin-bottom: 12px;
+    }
+    .slider-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+      font-size: 12px;
+    }
+    .slider-value {
+      color: #4CAF50;
+      font-weight: bold;
+      min-width: 45px;
+      text-align: right;
+    }
+    .slider-input {
+      width: 100%;
+      height: 6px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: #333;
+      border-radius: 3px;
+      outline: none;
+    }
+    .slider-input::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      background: #4CAF50;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    .slider-input::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      background: #4CAF50;
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+    }
+    .reset-button {
+      width: 100%;
+      background-color: #ff9800;
+      color: white;
+      border: none;
+      padding: 8px 15px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    .reset-button:hover {
+      background-color: #f57c00;
+    }
+    /* 編輯模式按鈕樣式 */
+    .edit-mode-button {
+      width: 100%;
+      background-color: #9c27b0;
+      color: white;
+      border: none;
+      padding: 8px 15px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+    .edit-mode-button:hover {
+      background-color: #7b1fa2;
+    }
+    .edit-mode-button.active {
+      background-color: #e91e63;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.7; }
+      100% { opacity: 1; }
+    }
+    .edit-mode-hint {
+      font-size: 11px;
+      color: #ff9800;
+      margin-bottom: 10px;
+      padding: 5px;
+      background-color: rgba(255, 152, 0, 0.1);
+      border-radius: 4px;
+      display: none;
+    }
+    .edit-mode-hint.show {
+      display: block;
+    }
+    .color-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+      font-size: 10px;
+    }
+    .color-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .color-box {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+    }
+    .color-box.identity { background-color: rgba(255, 0, 0, 0.5); border: 1px solid red; }
+    .color-box.message { background-color: rgba(0, 255, 0, 0.5); border: 1px solid lime; }
+    .color-box.vote { background-color: rgba(0, 0, 255, 0.5); border: 1px solid blue; }
+    .color-box.panel { background-color: transparent; border: 2px dashed yellow; }
   </style>
 </head>
 <body>
@@ -170,11 +329,122 @@
     </div>
   </div>
   
+  <!-- 版面設定區塊 -->
+  <div class="layout-settings">
+    <div class="layout-header" id="layout-header">
+      <span class="layout-title">📐 版面設定</span>
+      <span class="layout-toggle-icon" id="layout-toggle-icon">▼</span>
+    </div>
+    <div class="layout-content" id="layout-content">
+      <!-- 編輯模式切換 -->
+      <button id="edit-mode-toggle" class="edit-mode-button">🔧 開啟編輯模式</button>
+      <div class="edit-mode-hint" id="edit-mode-hint">
+        編輯模式已啟用！遮蔽區域將顯示為半透明並標示框線
+        <div class="color-legend">
+          <div class="color-legend-item"><span class="color-box identity"></span>身分區</div>
+          <div class="color-legend-item"><span class="color-box message"></span>訊息區</div>
+          <div class="color-legend-item"><span class="color-box vote"></span>上警區</div>
+          <div class="color-legend-item"><span class="color-box panel"></span>面板區</div>
+        </div>
+      </div>
+      
+      <!-- 容器位置設定 -->
+      <div class="layout-group">
+        <div class="layout-group-title">遮蔽容器位置</div>
+        
+        <div class="slider-item">
+          <div class="slider-label">
+            <span>頂部偏移</span>
+            <span class="slider-value" id="containerTop-value">8%</span>
+          </div>
+          <input type="range" class="slider-input" id="containerTop" min="0" max="20" step="0.5" value="8">
+        </div>
+        
+        <div class="slider-item">
+          <div class="slider-label">
+            <span>容器高度</span>
+            <span class="slider-value" id="containerHeight-value">87%</span>
+          </div>
+          <input type="range" class="slider-input" id="containerHeight" min="50" max="100" step="1" value="87">
+        </div>
+        
+        <div class="slider-item">
+          <div class="slider-label">
+            <span>容器寬度</span>
+            <span class="slider-value" id="containerWidth-value">12%</span>
+          </div>
+          <input type="range" class="slider-input" id="containerWidth" min="5" max="25" step="0.5" value="12">
+        </div>
+        
+        <div class="slider-item">
+          <div class="slider-label">
+            <span>左側邊距</span>
+            <span class="slider-value" id="containerLeftOffset-value">7%</span>
+          </div>
+          <input type="range" class="slider-input" id="containerLeftOffset" min="0" max="20" step="0.5" value="7">
+        </div>
+        
+        <div class="slider-item">
+          <div class="slider-label">
+            <span>右側邊距</span>
+            <span class="slider-value" id="containerRightOffset-value">7%</span>
+          </div>
+          <input type="range" class="slider-input" id="containerRightOffset" min="0" max="20" step="0.5" value="7">
+        </div>
+      </div>
+      
+      <!-- 區域比例設定 -->
+      <div class="layout-group">
+        <div class="layout-group-title">區域比例</div>
+        
+        <div class="slider-item">
+          <div class="slider-label">
+            <span>身分區寬度</span>
+            <span class="slider-value" id="identityWidthRatio-value">20.83%</span>
+          </div>
+          <input type="range" class="slider-input" id="identityWidthRatio" min="10" max="50" step="0.5" value="20.83">
+        </div>
+        
+        <div class="slider-item">
+          <div class="slider-label">
+            <span>訊息區高度比例</span>
+            <span class="slider-value" id="messageFlexRatio-value">2</span>
+          </div>
+          <input type="range" class="slider-input" id="messageFlexRatio" min="1" max="5" step="0.5" value="2">
+        </div>
+        
+        <div class="slider-item">
+          <div class="slider-label">
+            <span>上警區高度比例</span>
+            <span class="slider-value" id="voteFlexRatio-value">1</span>
+          </div>
+          <input type="range" class="slider-input" id="voteFlexRatio" min="0.5" max="3" step="0.5" value="1">
+        </div>
+      </div>
+      
+      <!-- 按鈕位置設定 -->
+      <div class="layout-group">
+        <div class="layout-group-title">控制按鈕</div>
+        
+        <div class="slider-item">
+          <div class="slider-label">
+            <span>上警按鈕頂部偏移</span>
+            <span class="slider-value" id="voteButtonTop-value">3%</span>
+          </div>
+          <input type="range" class="slider-input" id="voteButtonTop" min="0" max="15" step="0.5" value="3">
+        </div>
+      </div>
+      
+      <!-- 恢復預設值按鈕 -->
+      <button id="reset-layout" class="reset-button">🔄 恢復預設值</button>
+    </div>
+  </div>
+  
   <div class="info">
     此遮蔽功能僅在 YouTube 上使用時有效
   </div>
   
-  <div class="version">版本 1.1</div>
+  <div class="version">版本 1.3</div>
   
   <script src="popup.js"></script>
 </body>
