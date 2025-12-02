@@ -11,6 +11,928 @@ let editMode = false; // 版面編輯模式
 let isUpdatingBlockers = false; // 防止重複更新的旗標
 let isInitialized = false; // 初始化完成標記
 
+// ===== 片段跳過功能相關變數 =====
+let currentVideoId = null; // 當前影片 ID
+let videoSegments = []; // 當前影片的片段標記
+let segmentSkipSettings = { // 各階段跳過設定
+    night: true,      // 夜間環節預設跳過
+    draw: true,       // 抽牌環節預設跳過
+    opening: false,   // 開場環節預設不跳過
+    review: false     // 復盤環節預設不跳過
+};
+let isAnalyzing = false; // 是否正在分析中
+let skipEnabled = true; // 跳過功能總開關
+let lastSkipTime = 0; // 上次跳過的時間（防止連續跳過）
+let skipNotificationEnabled = true; // 跳過提示開關
+
+// ===== 狼人殺階段識別規則 =====
+const SEGMENT_RULES = {
+    // 夜間環節關鍵詞 (繁體/簡體)
+    night: {
+        start: [
+            '請閉眼', '请闭眼', '閉眼', '闭眼',
+            '天黑請閉眼', '天黑请闭眼', '天黑了',
+            '進入黑夜', '进入黑夜', '夜晚來臨', '夜晚来临'
+        ],
+        end: [
+            '天亮了', '天亮請睜眼', '天亮请睁眼',
+            '請睜眼', '请睁眼', '睜眼', '睁眼',
+            '天亮', '白天來臨', '白天来临'
+        ],
+        label: '夜間環節'
+    },
+    // 發言環節關鍵詞
+    speaking: {
+        markers: [
+            '號玩家發言', '号玩家发言', '號發言', '号发言',
+            '開始發言', '开始发言', '請發言', '请发言',
+            '輪到', '轮到', '你的發言', '你的发言'
+        ],
+        label: '發言環節'
+    },
+    // 復盤環節關鍵詞
+    review: {
+        start: [
+            '遊戲結束', '游戏结束', '公布身份', '公布身分',
+            '本局結束', '本局结束', '勝利', '胜利',
+            '狼人勝利', '狼人胜利', '好人勝利', '好人胜利',
+            '來復盤', '来复盘', '復盤', '复盘'
+        ],
+        label: '復盤環節'
+    },
+    // 抽牌環節關鍵詞
+    draw: {
+        markers: [
+            '查看身份', '查看身分', '抽牌', '確認身份', '确认身份',
+            '看牌', '請查看', '请查看', '底牌'
+        ],
+        label: '抽牌環節'
+    },
+    // 開場環節關鍵詞
+    opening: {
+        markers: [
+            '歡迎', '欢迎', '嘉賓', '嘉宾',
+            '今天', '本期', '大家好'
+        ],
+        label: '開場環節'
+    }
+};
+
+// ===== 片段分析核心函數 =====
+
+// 從 URL 獲取影片 ID
+function getVideoId() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('v');
+}
+
+// 請求抓取字幕 - 多種方法嘗試
+async function fetchSubtitles(videoId) {
+    console.log('開始抓取字幕，影片ID:', videoId);
+    
+    // 首先提取字幕軌道
+    const captionTracks = extractFullCaptionTracksFromPage();
+    
+    if (!captionTracks || captionTracks.length === 0) {
+        console.log('無法提取字幕軌道');
+        throw new Error('無法獲取字幕軌道');
+    }
+    
+    const targetTrack = selectBestCaptionTrack(captionTracks);
+    console.log('選擇字幕軌道:', targetTrack.languageCode, 'URL長度:', targetTrack.baseUrl?.length);
+    
+    // 方法0: 直接在 Content Script 中 fetch (攜帶 cookies)
+    try {
+        console.log('嘗試方法0: Content Script Fetch with credentials...');
+        const subtitles = await fetchSubtitleDirect(targetTrack.baseUrl);
+        if (subtitles && subtitles.length > 0) {
+            console.log('方法0成功，字幕數:', subtitles.length);
+            return subtitles;
+        }
+    } catch (e) {
+        console.log('方法0失敗:', e.message);
+    }
+    
+    // 方法1: 讓 Background Script 抓取
+    try {
+        console.log('嘗試方法1: Background Script 抓取完整 URL...');
+        const subtitles = await fetchSubtitleContentViaBackground(targetTrack.baseUrl);
+        if (subtitles && subtitles.length > 0) {
+            console.log('方法1成功，字幕數:', subtitles.length);
+            return subtitles;
+        }
+    } catch (e) {
+        console.log('方法1失敗:', e.message);
+    }
+    
+    // 方法2: 使用 Background Script 的 Innertube API
+    try {
+        console.log('嘗試方法2: Background Script (Innertube API)...');
+        const subtitles = await fetchSubtitlesViaBackground(videoId);
+        if (subtitles && subtitles.length > 0) {
+            console.log('方法2成功，字幕數:', subtitles.length);
+            return subtitles;
+        }
+    } catch (e) {
+        console.log('方法2失敗:', e.message);
+    }
+    
+    // 如果所有方法都失敗
+    throw new Error('無法獲取字幕');
+}
+
+// 直接在 Content Script 中 fetch 字幕
+async function fetchSubtitleDirect(baseUrl) {
+    // 準備 URL
+    let url = baseUrl.replace(/\\u0026/g, '&');
+    
+    // 嘗試不同格式
+    const formats = ['json3', 'srv3', ''];
+    
+    for (const fmt of formats) {
+        try {
+            let fetchUrl = url;
+            if (fmt) {
+                if (fetchUrl.includes('&fmt=')) {
+                    fetchUrl = fetchUrl.replace(/&fmt=[^&]+/, `&fmt=${fmt}`);
+                } else {
+                    fetchUrl += `&fmt=${fmt}`;
+                }
+            }
+            
+            console.log(`嘗試格式 ${fmt || 'default'}，URL: ${fetchUrl.substring(0, 80)}...`);
+            
+            const response = await fetch(fetchUrl, {
+                method: 'GET',
+                credentials: 'include',
+                headers: {
+                    'Accept': 'application/json, text/xml, */*'
+                }
+            });
+            
+            console.log(`格式 ${fmt || 'default'} 回應狀態: ${response.status}`);
+            console.log(`Content-Type: ${response.headers.get('content-type')}`);
+            
+            if (!response.ok) {
+                console.log(`格式 ${fmt || 'default'} 請求失敗: ${response.status}`);
+                continue;
+            }
+            
+            const text = await response.text();
+            console.log(`格式 ${fmt || 'default'} 回應長度: ${text.length}`);
+            console.log(`回應前200字: ${text.substring(0, 200)}`);
+            
+            if (!text || text.trim().length === 0) {
+                console.log(`格式 ${fmt || 'default'} 回應為空`);
+                continue;
+            }
+            
+            // 解析字幕
+            let subtitles = [];
+            
+            if (text.trim().startsWith('{')) {
+                // JSON3 格式
+                const data = JSON.parse(text);
+                if (data.events) {
+                    for (const event of data.events) {
+                        if (!event.segs) continue;
+                        let eventText = '';
+                        for (const seg of event.segs) {
+                            if (seg.utf8) eventText += seg.utf8;
+                        }
+                        eventText = eventText.trim();
+                        if (!eventText) continue;
+                        subtitles.push({
+                            start: (event.tStartMs || 0) / 1000,
+                            end: ((event.tStartMs || 0) + (event.dDurationMs || 0)) / 1000,
+                            text: eventText
+                        });
+                    }
+                }
+            } else if (text.includes('<text')) {
+                // XML 格式
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(text, 'text/xml');
+                const textNodes = doc.querySelectorAll('text');
+                textNodes.forEach(node => {
+                    const start = parseFloat(node.getAttribute('start') || '0');
+                    const dur = parseFloat(node.getAttribute('dur') || '0');
+                    const content = node.textContent.trim();
+                    if (content) {
+                        subtitles.push({
+                            start: start,
+                            end: start + dur,
+                            text: content
+                        });
+                    }
+                });
+            }
+            
+            if (subtitles.length > 0) {
+                console.log(`成功解析 ${fmt || 'default'} 格式，字幕數: ${subtitles.length}`);
+                return subtitles;
+            }
+        } catch (e) {
+            console.log(`格式 ${fmt || 'default'} 處理失敗:`, e.message);
+        }
+    }
+    
+    return null;
+}
+
+// 從頁面提取完整的字幕軌道資訊 (包含簽名)
+function extractFullCaptionTracksFromPage() {
+    try {
+        console.log('開始提取完整字幕軌道...');
+        
+        // 方法1: 從 script 標籤中搜尋完整的 captionTracks
+        const scripts = document.querySelectorAll('script');
+        console.log('找到 script 標籤數量:', scripts.length);
+        
+        for (const script of scripts) {
+            const text = script.textContent || '';
+            
+            // 檢查是否包含 captionTracks
+            if (text.includes('"captionTracks"') && text.includes('"baseUrl"')) {
+                console.log('找到包含 captionTracks 的 script，長度:', text.length);
+                
+                // 找到 captionTracks 的位置
+                const captionStart = text.indexOf('"captionTracks"');
+                if (captionStart === -1) continue;
+                
+                // 從 captionTracks 開始找到完整的陣列
+                const arrayStart = text.indexOf('[', captionStart);
+                if (arrayStart === -1) continue;
+                
+                // 找到對應的結束括號
+                let depth = 0;
+                let arrayEnd = -1;
+                for (let i = arrayStart; i < text.length && i < arrayStart + 50000; i++) {
+                    if (text[i] === '[') depth++;
+                    if (text[i] === ']') depth--;
+                    if (depth === 0) {
+                        arrayEnd = i + 1;
+                        break;
+                    }
+                }
+                
+                if (arrayEnd > arrayStart) {
+                    const jsonStr = text.substring(arrayStart, arrayEnd);
+                    console.log('提取的 JSON 長度:', jsonStr.length);
+                    console.log('JSON 前200字:', jsonStr.substring(0, 200));
+                    
+                    try {
+                        const tracks = JSON.parse(jsonStr);
+                        if (tracks && tracks.length > 0 && tracks[0].baseUrl) {
+                            const firstUrl = tracks[0].baseUrl;
+                            console.log('第一個 baseUrl 長度:', firstUrl.length);
+                            console.log('baseUrl 包含 signature:', firstUrl.includes('signature'));
+                            
+                            // 解碼 URL 中的轉義字元
+                            for (const track of tracks) {
+                                if (track.baseUrl) {
+                                    track.baseUrl = track.baseUrl.replace(/\\u0026/g, '&');
+                                }
+                            }
+                            
+                            console.log('解碼後 baseUrl 長度:', tracks[0].baseUrl.length);
+                            return tracks;
+                        }
+                    } catch (e) {
+                        console.log('解析 captionTracks 失敗:', e.message);
+                    }
+                }
+            }
+        }
+        
+        console.log('script 標籤方法失敗，嘗試 HTML 搜尋...');
+        
+        // 方法2: 從頁面 HTML 直接搜尋完整的 baseUrl (包含 signature)
+        const html = document.documentElement.innerHTML;
+        console.log('HTML 長度:', html.length);
+        
+        // 搜尋包含完整簽名的 timedtext URL
+        const urlPattern = /"baseUrl"\s*:\s*"(https:[^"]*timedtext[^"]*)"/g;
+        const tracks = [];
+        let match;
+        
+        while ((match = urlPattern.exec(html)) !== null) {
+            let url = match[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+            
+            console.log('找到 URL，長度:', url.length, '包含 signature:', url.includes('signature'));
+            
+            // 提取語言代碼
+            const langMatch = url.match(/[&?]lang=([^&]+)/);
+            const lang = langMatch ? langMatch[1] : 'unknown';
+            
+            // 避免重複
+            if (!tracks.find(t => t.languageCode === lang)) {
+                tracks.push({
+                    baseUrl: url,
+                    languageCode: lang
+                });
+            }
+        }
+        
+        if (tracks.length > 0) {
+            console.log('HTML 搜尋找到', tracks.length, '個字幕軌道');
+            return tracks;
+        }
+        
+        // 方法3: 回退到原有方法
+        console.log('使用回退方法提取字幕軌道');
+        return extractCaptionTracksFromHTML();
+    } catch (e) {
+        console.log('extractFullCaptionTracksFromPage 錯誤:', e.message);
+        return null;
+    }
+}
+
+// 輔助函數: 延遲
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// 使用 XMLHttpRequest 抓取字幕（在頁面上下文中）
+function fetchSubtitleWithXHR(baseUrl) {
+    return new Promise((resolve, reject) => {
+        // 解碼 URL
+        let url = baseUrl.replace(/\\u0026/g, '&');
+        
+        // 嘗試 json3 格式
+        if (url.includes('&fmt=')) {
+            url = url.replace(/&fmt=[^&]+/, '&fmt=json3');
+        } else {
+            url += '&fmt=json3';
+        }
+        
+        console.log('XHR 請求字幕:', url.substring(0, 80) + '...');
+        
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.withCredentials = true;  // 攜帶 cookies
+        
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+                const text = xhr.responseText;
+                console.log('XHR 回應長度:', text.length);
+                
+                if (text && text.trim().length > 0) {
+                    try {
+                        if (text.trim().startsWith('{')) {
+                            const data = JSON.parse(text);
+                            const subtitles = parseJSON3SubtitlesLocal(data);
+                            if (subtitles.length > 0) {
+                                resolve(subtitles);
+                                return;
+                            }
+                        } else if (text.includes('<text')) {
+                            const subtitles = parseXMLSubtitlesLocal(text);
+                            if (subtitles.length > 0) {
+                                resolve(subtitles);
+                                return;
+                            }
+                        }
+                    } catch (e) {
+                        console.log('解析失敗:', e.message);
+                    }
+                }
+            }
+            reject(new Error('XHR 無法獲取有效字幕'));
+        };
+        
+        xhr.onerror = function() {
+            reject(new Error('XHR 請求失敗'));
+        };
+        
+        xhr.send();
+    });
+}
+
+// 本地解析 JSON3 字幕
+function parseJSON3SubtitlesLocal(data) {
+    const subtitles = [];
+    if (!data || !data.events) return subtitles;
+    
+    for (const event of data.events) {
+        if (!event.segs) continue;
+        let text = event.segs.map(seg => seg.utf8 || '').join('').trim();
+        if (!text) continue;
+        
+        subtitles.push({
+            start: (event.tStartMs || 0) / 1000,
+            end: ((event.tStartMs || 0) + (event.dDurationMs || 0)) / 1000,
+            text: text
+        });
+    }
+    return subtitles;
+}
+
+// 本地解析 XML 字幕
+function parseXMLSubtitlesLocal(xmlText) {
+    const subtitles = [];
+    const regex = /<text start="([\d.]+)" dur="([\d.]+)"[^>]*>([\s\S]*?)<\/text>/g;
+    let match;
+    
+    while ((match = regex.exec(xmlText)) !== null) {
+        let text = match[3]
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&nbsp;/g, ' ')
+            .trim();
+        
+        if (text) {
+            subtitles.push({
+                start: parseFloat(match[1]),
+                end: parseFloat(match[1]) + parseFloat(match[2]),
+                text: text
+            });
+        }
+    }
+    return subtitles;
+}
+
+// 從頁面 HTML 提取字幕軌道
+function extractCaptionTracksFromHTML() {
+    const html = document.documentElement.innerHTML;
+    
+    // 嘗試匹配 captionTracks
+    const match = html.match(/"captionTracks"\s*:\s*(\[[\s\S]*?\])(?=\s*,\s*")/);
+    if (match) {
+        try {
+            let jsonStr = match[1];
+            // 找到正確的結束位置
+            let bracketCount = 0;
+            let endIndex = 0;
+            for (let i = 0; i < jsonStr.length; i++) {
+                if (jsonStr[i] === '[') bracketCount++;
+                if (jsonStr[i] === ']') bracketCount--;
+                if (bracketCount === 0) {
+                    endIndex = i + 1;
+                    break;
+                }
+            }
+            if (endIndex > 0) {
+                jsonStr = jsonStr.substring(0, endIndex);
+            }
+            
+            const tracks = JSON.parse(jsonStr);
+            if (tracks && tracks.length > 0) {
+                console.log('成功解析 captionTracks，軌道數:', tracks.length);
+                return tracks;
+            }
+        } catch (e) {
+            console.log('JSON 解析失敗:', e.message);
+        }
+    }
+    
+    return null;
+}
+
+// 選擇最佳字幕軌道
+function selectBestCaptionTrack(captionTracks) {
+    const langPriority = ['zh-TW', 'zh-Hant', 'zh-CN', 'zh-Hans', 'zh'];
+    
+    for (const lang of langPriority) {
+        const track = captionTracks.find(t => 
+            t.languageCode === lang || 
+            (t.languageCode && t.languageCode.startsWith(lang))
+        );
+        if (track) return track;
+    }
+    
+    return captionTracks[0];
+}
+
+// 讓 Background Script 抓取字幕內容 (使用 baseUrl)
+function fetchSubtitleContentViaBackground(baseUrl) {
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+            { action: 'fetchSubtitleByUrl', baseUrl: baseUrl },
+            (response) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                if (response && response.success) {
+                    resolve(response.subtitles);
+                } else {
+                    reject(new Error(response?.error || '字幕抓取失敗'));
+                }
+            }
+        );
+    });
+}
+
+// 讓 Background Script 直接抓取字幕 (使用 videoId)
+function fetchSubtitlesViaBackground(videoId) {
+    return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+            { action: 'fetchSubtitles', videoId: videoId },
+            (response) => {
+                if (chrome.runtime.lastError) {
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                if (response && response.success) {
+                    resolve(response.subtitles);
+                } else {
+                    reject(new Error(response?.error || '字幕抓取失敗'));
+                }
+            }
+        );
+    });
+}
+
+// 分析字幕並識別片段
+function analyzeSubtitles(subtitles) {
+    const segments = [];
+    let nightStartTime = null;
+    let reviewStartTime = null;
+    
+    for (let i = 0; i < subtitles.length; i++) {
+        const subtitle = subtitles[i];
+        const text = subtitle.text;
+        const startTime = subtitle.start;
+        const endTime = subtitle.end;
+        
+        // 檢測夜間環節開始
+        if (nightStartTime === null) {
+            for (const keyword of SEGMENT_RULES.night.start) {
+                if (text.includes(keyword)) {
+                    nightStartTime = startTime;
+                    console.log(`偵測到夜間開始: ${keyword} at ${startTime}s`);
+                    break;
+                }
+            }
+        }
+        
+        // 檢測夜間環節結束
+        if (nightStartTime !== null) {
+            for (const keyword of SEGMENT_RULES.night.end) {
+                if (text.includes(keyword)) {
+                    // 確保有最小時長 (至少3秒)
+                    if (startTime - nightStartTime >= 3) {
+                        segments.push({
+                            type: 'night',
+                            start: nightStartTime,
+                            end: startTime,
+                            label: SEGMENT_RULES.night.label,
+                            shouldSkip: segmentSkipSettings.night
+                        });
+                        console.log(`夜間環節: ${nightStartTime}s - ${startTime}s`);
+                    }
+                    nightStartTime = null;
+                    break;
+                }
+            }
+        }
+        
+        // 檢測復盤環節開始
+        if (reviewStartTime === null) {
+            for (const keyword of SEGMENT_RULES.review.start) {
+                if (text.includes(keyword)) {
+                    reviewStartTime = startTime;
+                    console.log(`偵測到復盤開始: ${keyword} at ${startTime}s`);
+                    break;
+                }
+            }
+        }
+        
+        // 檢測抽牌環節
+        for (const keyword of SEGMENT_RULES.draw.markers) {
+            if (text.includes(keyword)) {
+                // 抽牌通常持續較短時間，標記前後10秒
+                const drawStart = Math.max(0, startTime - 5);
+                const drawEnd = endTime + 10;
+                
+                // 避免重複標記
+                const isDuplicate = segments.some(s => 
+                    s.type === 'draw' && 
+                    Math.abs(s.start - drawStart) < 15
+                );
+                
+                if (!isDuplicate) {
+                    segments.push({
+                        type: 'draw',
+                        start: drawStart,
+                        end: drawEnd,
+                        label: SEGMENT_RULES.draw.label,
+                        shouldSkip: segmentSkipSettings.draw
+                    });
+                    console.log(`抽牌環節: ${drawStart}s - ${drawEnd}s`);
+                }
+                break;
+            }
+        }
+    }
+    
+    // 如果夜間環節未結束（可能字幕不完整），使用最後一個字幕時間作為結束
+    if (nightStartTime !== null && subtitles.length > 0) {
+        const lastSubtitle = subtitles[subtitles.length - 1];
+        segments.push({
+            type: 'night',
+            start: nightStartTime,
+            end: lastSubtitle.end,
+            label: SEGMENT_RULES.night.label,
+            shouldSkip: segmentSkipSettings.night
+        });
+    }
+    
+    // 如果有復盤環節，標記到影片結尾
+    if (reviewStartTime !== null && subtitles.length > 0) {
+        const lastSubtitle = subtitles[subtitles.length - 1];
+        segments.push({
+            type: 'review',
+            start: reviewStartTime,
+            end: lastSubtitle.end + 60, // 假設復盤到影片結束
+            label: SEGMENT_RULES.review.label,
+            shouldSkip: segmentSkipSettings.review
+        });
+    }
+    
+    // 按開始時間排序
+    segments.sort((a, b) => a.start - b.start);
+    
+    // 合併重疊的相同類型片段
+    const mergedSegments = mergeOverlappingSegments(segments);
+    
+    return mergedSegments;
+}
+
+// 合併重疊的相同類型片段
+function mergeOverlappingSegments(segments) {
+    if (segments.length === 0) return segments;
+    
+    const merged = [];
+    let current = { ...segments[0] };
+    
+    for (let i = 1; i < segments.length; i++) {
+        const next = segments[i];
+        
+        // 如果是相同類型且重疊或相鄰（5秒內）
+        if (current.type === next.type && next.start <= current.end + 5) {
+            // 合併
+            current.end = Math.max(current.end, next.end);
+        } else {
+            merged.push(current);
+            current = { ...next };
+        }
+    }
+    merged.push(current);
+    
+    return merged;
+}
+
+// 執行影片分析
+async function analyzeCurrentVideo() {
+    const videoId = getVideoId();
+    if (!videoId) {
+        console.log('無法獲取影片 ID');
+        return { success: false, error: '無法獲取影片 ID' };
+    }
+    
+    if (isAnalyzing) {
+        console.log('分析進行中...');
+        return { success: false, error: '分析進行中' };
+    }
+    
+    isAnalyzing = true;
+    currentVideoId = videoId;
+    
+    try {
+        console.log(`開始分析影片: ${videoId}`);
+        
+        // 抓取字幕
+        const subtitles = await fetchSubtitles(videoId);
+        console.log(`獲取到 ${subtitles.length} 條字幕`);
+        
+        if (subtitles.length === 0) {
+            isAnalyzing = false;
+            return { success: false, error: '影片無可用字幕' };
+        }
+        
+        // 分析字幕
+        const segments = analyzeSubtitles(subtitles);
+        console.log(`識別到 ${segments.length} 個片段`);
+        
+        // 儲存結果
+        videoSegments = segments;
+        await saveVideoSegments(videoId, segments);
+        
+        // 設置時間監聽
+        setupVideoTimeListener();
+        
+        isAnalyzing = false;
+        
+        return { 
+            success: true, 
+            segments: segments,
+            subtitleCount: subtitles.length
+        };
+    } catch (error) {
+        console.error('影片分析失敗:', error);
+        isAnalyzing = false;
+        return { 
+            success: false, 
+            error: '字幕獲取失敗（YouTube 已限制存取）。\n請使用下方「手動新增片段」功能標記要跳過的時間段。'
+        };
+    }
+}
+
+// ===== 片段儲存與載入 =====
+
+// 儲存影片片段資料
+async function saveVideoSegments(videoId, segments) {
+    const key = `werewolfSegments_${videoId}`;
+    const data = {
+        segments: segments,
+        analyzedAt: Date.now(),
+        version: '1.0'
+    };
+    
+    return new Promise((resolve) => {
+        chrome.storage.local.set({ [key]: data }, () => {
+            console.log(`已儲存 ${segments.length} 個片段標記`);
+            resolve();
+        });
+    });
+}
+
+// 載入影片片段資料
+async function loadVideoSegments(videoId) {
+    const key = `werewolfSegments_${videoId}`;
+    
+    return new Promise((resolve) => {
+        chrome.storage.local.get(key, (result) => {
+            if (result[key]) {
+                console.log(`載入已儲存的片段資料: ${result[key].segments.length} 個片段`);
+                resolve(result[key]);
+            } else {
+                resolve(null);
+            }
+        });
+    });
+}
+
+// 載入跳過設定
+function loadSkipSettings() {
+    chrome.storage.sync.get({
+        'werewolfSkipSettings': segmentSkipSettings,
+        'werewolfSkipEnabled': true,
+        'werewolfSkipNotification': true
+    }, (result) => {
+        segmentSkipSettings = result.werewolfSkipSettings;
+        skipEnabled = result.werewolfSkipEnabled;
+        skipNotificationEnabled = result.werewolfSkipNotification;
+        console.log('載入跳過設定:', segmentSkipSettings);
+    });
+}
+
+// 儲存跳過設定
+function saveSkipSettings() {
+    chrome.storage.sync.set({
+        'werewolfSkipSettings': segmentSkipSettings,
+        'werewolfSkipEnabled': skipEnabled,
+        'werewolfSkipNotification': skipNotificationEnabled
+    });
+}
+
+// ===== 影片時間監聽與自動跳過 =====
+
+let timeUpdateListener = null;
+
+// 設置影片時間監聽器
+function setupVideoTimeListener() {
+    const video = document.querySelector('video');
+    if (!video) {
+        console.log('找不到影片元素');
+        return;
+    }
+    
+    // 移除舊的監聽器
+    if (timeUpdateListener) {
+        video.removeEventListener('timeupdate', timeUpdateListener);
+    }
+    
+    // 建立新的監聽器
+    timeUpdateListener = () => {
+        if (!skipEnabled || videoSegments.length === 0) return;
+        
+        const currentTime = video.currentTime;
+        checkAndSkipSegment(video, currentTime);
+    };
+    
+    video.addEventListener('timeupdate', timeUpdateListener);
+    console.log('已設置影片時間監聽器');
+}
+
+// 檢查並跳過片段
+function checkAndSkipSegment(video, currentTime) {
+    // 防止連續跳過 (至少間隔2秒)
+    if (Date.now() - lastSkipTime < 2000) return;
+    
+    for (const segment of videoSegments) {
+        // 檢查是否應該跳過此類型的片段
+        if (!segmentSkipSettings[segment.type]) continue;
+        
+        // 檢查當前時間是否在片段範圍內
+        if (currentTime >= segment.start && currentTime < segment.end - 1) {
+            console.log(`跳過 ${segment.label}: ${segment.start}s -> ${segment.end}s`);
+            
+            // 跳到片段結束
+            video.currentTime = segment.end;
+            lastSkipTime = Date.now();
+            
+            // 顯示跳過提示
+            if (skipNotificationEnabled) {
+                showSkipNotification(segment.label);
+            }
+            
+            break;
+        }
+    }
+}
+
+// 顯示跳過提示
+function showSkipNotification(label) {
+    // 移除舊的提示
+    const oldNotification = document.getElementById('skip-notification');
+    if (oldNotification) oldNotification.remove();
+    
+    // 建立新的提示
+    const notification = document.createElement('div');
+    notification.id = 'skip-notification';
+    notification.textContent = `已跳過: ${label}`;
+    
+    Object.assign(notification.style, {
+        position: 'fixed',
+        top: '80px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        color: '#fff',
+        padding: '10px 20px',
+        borderRadius: '5px',
+        fontSize: '14px',
+        fontWeight: 'bold',
+        zIndex: '99999',
+        transition: 'opacity 0.3s',
+        pointerEvents: 'none'
+    });
+    
+    document.body.appendChild(notification);
+    
+    // 2秒後淡出
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        setTimeout(() => notification.remove(), 300);
+    }, 2000);
+}
+
+// 清除影片片段資料
+function clearVideoSegments() {
+    videoSegments = [];
+    currentVideoId = null;
+    
+    if (timeUpdateListener) {
+        const video = document.querySelector('video');
+        if (video) {
+            video.removeEventListener('timeupdate', timeUpdateListener);
+        }
+        timeUpdateListener = null;
+    }
+}
+
+// 當影片變更時的處理
+async function handleVideoChange() {
+    const newVideoId = getVideoId();
+    
+    if (newVideoId && newVideoId !== currentVideoId) {
+        console.log(`影片變更: ${currentVideoId} -> ${newVideoId}`);
+        currentVideoId = newVideoId;
+        
+        // 嘗試載入已儲存的片段資料
+        const savedData = await loadVideoSegments(newVideoId);
+        
+        if (savedData) {
+            videoSegments = savedData.segments;
+            // 更新跳過設定
+            videoSegments.forEach(seg => {
+                seg.shouldSkip = segmentSkipSettings[seg.type] ?? seg.shouldSkip;
+            });
+            setupVideoTimeListener();
+            console.log('已載入儲存的片段資料');
+        } else {
+            videoSegments = [];
+            console.log('此影片尚未分析');
+        }
+    }
+}
+
 // ===== DOM 快取 =====
 const domCache = {
     videoContainer: null,
@@ -317,6 +1239,103 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         if (isWatchPage() && shouldEnableBlocker()) {
             forceUpdateBlockers();
         }
+    }
+    // ===== 片段分析相關訊息處理 =====
+    else if (request.action === 'analyzeVideo') {
+        console.log("收到分析影片請求");
+        analyzeCurrentVideo().then(result => {
+            sendResponse(result);
+        }).catch(error => {
+            sendResponse({ success: false, error: error.message });
+        });
+        return true; // 異步回應
+    } else if (request.action === 'getVideoSegments') {
+        sendResponse({
+            success: true,
+            videoId: currentVideoId,
+            segments: videoSegments,
+            isAnalyzing: isAnalyzing
+        });
+        return true;
+    } else if (request.action === 'updateSkipSettings') {
+        console.log("收到更新跳過設定請求:", request.settings);
+        segmentSkipSettings = { ...segmentSkipSettings, ...request.settings };
+        skipEnabled = request.skipEnabled ?? skipEnabled;
+        skipNotificationEnabled = request.skipNotification ?? skipNotificationEnabled;
+        saveSkipSettings();
+        
+        // 更新已載入片段的跳過狀態
+        videoSegments.forEach(seg => {
+            seg.shouldSkip = segmentSkipSettings[seg.type] ?? seg.shouldSkip;
+        });
+        
+        sendResponse({ success: true });
+        return true;
+    } else if (request.action === 'getSkipSettings') {
+        sendResponse({
+            success: true,
+            settings: segmentSkipSettings,
+            skipEnabled: skipEnabled,
+            skipNotification: skipNotificationEnabled
+        });
+        return true;
+    } else if (request.action === 'clearVideoSegments') {
+        const videoId = request.videoId || currentVideoId;
+        if (videoId) {
+            const key = `werewolfSegments_${videoId}`;
+            chrome.storage.local.remove(key, () => {
+                if (videoId === currentVideoId) {
+                    clearVideoSegments();
+                }
+                console.log(`已清除影片 ${videoId} 的片段資料`);
+                sendResponse({ success: true });
+            });
+        } else {
+            sendResponse({ success: false, error: '無影片 ID' });
+        }
+        return true;
+    } else if (request.action === 'addManualSegment') {
+        const videoId = currentVideoId || getVideoId();
+        if (!videoId) {
+            sendResponse({ success: false, error: '無法獲取影片 ID' });
+            return true;
+        }
+        
+        const newSegment = request.segment;
+        if (!newSegment || newSegment.startTime === undefined || newSegment.endTime === undefined) {
+            sendResponse({ success: false, error: '片段資料無效' });
+            return true;
+        }
+        
+        // 載入現有片段
+        const key = `werewolfSegments_${videoId}`;
+        chrome.storage.local.get(key, (result) => {
+            let segments = result[key] || [];
+            
+            // 添加新片段
+            segments.push(newSegment);
+            
+            // 依開始時間排序
+            segments.sort((a, b) => a.startTime - b.startTime);
+            
+            // 保存
+            chrome.storage.local.set({ [key]: segments }, () => {
+                // 更新當前使用的片段
+                videoSegments = segments;
+                console.log(`已新增手動片段: ${newSegment.startTime} - ${newSegment.endTime} (${newSegment.type})`);
+                sendResponse({ success: true, segments: segments });
+            });
+        });
+        return true;
+    } else if (request.action === 'skipToTime') {
+        const video = document.querySelector('video');
+        if (video && request.time !== undefined) {
+            video.currentTime = request.time;
+            sendResponse({ success: true });
+        } else {
+            sendResponse({ success: false, error: '無法跳轉' });
+        }
+        return true;
     }
 });
 
@@ -1103,6 +2122,13 @@ function setupURLChangeListener() {
             // URL 變化時重置面板狀態
             resetBlockerPanels();
             
+            // 處理影片片段
+            if (isWatchPage()) {
+                handleVideoChange();
+            } else {
+                clearVideoSegments();
+            }
+            
             // 使用 requestAnimationFrame 而非 setTimeout
             requestAnimationFrame(() => {
                 if (isWatchPage()) {
@@ -1186,7 +2212,7 @@ function setupYouTubeFullscreenDetection() {
     setupTheaterModeDetection();
 }
 
-// ===== 初始化和主要事件監聽 =====
+// ===== 初始化和主要事件監聯 =====
 // 當 YouTube 網頁載入時執行
 function initializeExtension() {
     if (isInitialized) return;
@@ -1194,8 +2220,16 @@ function initializeExtension() {
     // 載入遮蔽器狀態
     loadBlockerStatus();
     
+    // 載入跳過設定
+    loadSkipSettings();
+    
     // 設置 URL 變化監聽
     setupURLChangeListener();
+    
+    // 初始化影片片段處理
+    if (isWatchPage()) {
+        handleVideoChange();
+    }
     
     // 設置全螢幕事件監聽（延遲執行，非關鍵路徑）
     if (typeof requestIdleCallback !== 'undefined') {

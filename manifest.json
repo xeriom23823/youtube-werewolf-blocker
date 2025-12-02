@@ -1,12 +1,19 @@
 {
     "manifest_version": 3,
     "name": "YouTube 狼人殺遮蔽助手",
-    "version": "1.3",
-    "description": "隱藏 YouTube 上狼人殺影片中的身分資訊，避免爆雷。",
+    "version": "1.5",
+    "description": "隱藏 YouTube 上狼人殺影片中的身分資訊，避免爆雷。支援 AI 字幕分析自動跳過夜間環節。",
     "permissions": [
       "activeTab",
       "storage"
     ],
+    "host_permissions": [
+      "*://www.youtube.com/*",
+      "*://*.googlevideo.com/*"
+    ],
+    "background": {
+      "service_worker": "background.js"
+    },
     "action": {
       "default_popup": "popup.html",
       "default_icon": {

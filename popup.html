@@ -289,6 +289,272 @@
     .color-box.message { background-color: rgba(0, 255, 0, 0.5); border: 1px solid lime; }
     .color-box.vote { background-color: rgba(0, 0, 255, 0.5); border: 1px solid blue; }
     .color-box.panel { background-color: transparent; border: 2px dashed yellow; }
+    
+    /* 片段設定區塊樣式 */
+    .segment-settings {
+      margin-top: 15px;
+      border-top: 1px solid #444;
+      padding-top: 15px;
+    }
+    .segment-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      padding: 8px 0;
+    }
+    .segment-header:hover {
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+    .segment-title {
+      font-weight: bold;
+      font-size: 14px;
+    }
+    .segment-toggle-icon {
+      font-size: 12px;
+      transition: transform 0.3s;
+    }
+    .segment-toggle-icon.expanded {
+      transform: rotate(180deg);
+    }
+    .segment-content {
+      display: none;
+      padding-top: 10px;
+    }
+    .segment-content.show {
+      display: block;
+    }
+    .analyze-button {
+      width: 100%;
+      background-color: #2196F3;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      margin-bottom: 10px;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .analyze-button:hover {
+      background-color: #1976D2;
+    }
+    .analyze-button:disabled {
+      background-color: #555;
+      cursor: not-allowed;
+    }
+    .analyze-button.analyzing {
+      background-color: #ff9800;
+    }
+    .analyze-status {
+      font-size: 11px;
+      color: #aaa;
+      margin-bottom: 10px;
+      padding: 8px;
+      background-color: rgba(0, 0, 0, 0.3);
+      border-radius: 4px;
+      text-align: center;
+      line-height: 1.5;
+    }
+    .analyze-status.success {
+      color: #4CAF50;
+      background-color: rgba(76, 175, 80, 0.1);
+    }
+    .analyze-status.error {
+      color: #f44336;
+      background-color: rgba(244, 67, 54, 0.1);
+    }
+    .skip-toggle-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #333;
+    }
+    .skip-toggle-container:last-child {
+      border-bottom: none;
+    }
+    .skip-toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .skip-toggle-icon {
+      font-size: 14px;
+    }
+    .skip-toggle {
+      position: relative;
+      width: 40px;
+      height: 20px;
+    }
+    .skip-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .skip-toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #555;
+      transition: 0.3s;
+      border-radius: 20px;
+    }
+    .skip-toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 2px;
+      bottom: 2px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+    }
+    .skip-toggle input:checked + .skip-toggle-slider {
+      background-color: #4CAF50;
+    }
+    .skip-toggle input:checked + .skip-toggle-slider:before {
+      transform: translateX(20px);
+    }
+    .segment-list {
+      margin-top: 10px;
+      max-height: 120px;
+      overflow-y: auto;
+      background-color: rgba(0, 0, 0, 0.3);
+      border-radius: 4px;
+      padding: 5px;
+    }
+    .segment-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 8px;
+      font-size: 11px;
+      border-bottom: 1px solid #333;
+    }
+    .segment-item:last-child {
+      border-bottom: none;
+    }
+    .segment-item-type {
+      color: #4CAF50;
+      font-weight: bold;
+    }
+    .segment-item-time {
+      color: #aaa;
+    }
+    .master-skip-toggle {
+      margin-bottom: 15px;
+      padding: 10px;
+      background-color: rgba(33, 150, 243, 0.1);
+      border-radius: 4px;
+      border: 1px solid rgba(33, 150, 243, 0.3);
+    }
+    .clear-segments-button {
+      width: 100%;
+      background-color: #f44336;
+      color: white;
+      border: none;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .clear-segments-button:hover {
+      background-color: #d32f2f;
+    }
+    
+    /* 手動新增片段樣式 */
+    .manual-segment-form {
+      margin-top: 10px;
+    }
+    .time-input-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .time-input-group {
+      flex: 1;
+    }
+    .time-input-group label {
+      display: block;
+      font-size: 11px;
+      color: #aaa;
+      margin-bottom: 4px;
+    }
+    .time-input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #444;
+      border-radius: 4px;
+      background-color: #2a2a2a;
+      color: white;
+      font-size: 14px;
+      text-align: center;
+      box-sizing: border-box;
+    }
+    .time-input:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+    .time-separator {
+      color: #666;
+      font-size: 18px;
+      margin-top: 18px;
+    }
+    .segment-type-row {
+      margin-bottom: 10px;
+    }
+    .segment-type-row label {
+      display: block;
+      font-size: 11px;
+      color: #aaa;
+      margin-bottom: 4px;
+    }
+    .segment-type-select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #444;
+      border-radius: 4px;
+      background-color: #2a2a2a;
+      color: white;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .segment-type-select:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+    .add-segment-button {
+      width: 100%;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .add-segment-button:hover {
+      background-color: #45a049;
+    }
+    .manual-segment-hint {
+      margin-top: 8px;
+      font-size: 10px;
+      color: #777;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
@@ -440,11 +706,138 @@
     </div>
   </div>
   
+  <!-- 片段設定區塊 -->
+  <div class="segment-settings">
+    <div class="segment-header" id="segment-header">
+      <span class="segment-title">🎬 片段跳過設定</span>
+      <span class="segment-toggle-icon" id="segment-toggle-icon">▼</span>
+    </div>
+    <div class="segment-content" id="segment-content">
+      <!-- 分析按鈕 -->
+      <button id="analyze-video" class="analyze-button">
+        <span>🤖</span>
+        <span id="analyze-button-text">AI 分析字幕</span>
+      </button>
+      
+      <!-- 分析狀態 -->
+      <div class="analyze-status" id="analyze-status">
+        尚未分析此影片
+      </div>
+      
+      <!-- 跳過功能總開關 -->
+      <div class="master-skip-toggle">
+        <div class="skip-toggle-container">
+          <div class="skip-toggle-label">
+            <span class="skip-toggle-icon">⏭️</span>
+            <span>啟用自動跳過</span>
+          </div>
+          <label class="skip-toggle">
+            <input type="checkbox" id="skip-enabled" checked>
+            <span class="skip-toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+      
+      <!-- 各階段跳過開關 -->
+      <div class="layout-group">
+        <div class="layout-group-title">選擇要跳過的環節</div>
+        
+        <div class="skip-toggle-container">
+          <div class="skip-toggle-label">
+            <span class="skip-toggle-icon">🌙</span>
+            <span>夜間環節</span>
+          </div>
+          <label class="skip-toggle">
+            <input type="checkbox" id="skip-night" checked>
+            <span class="skip-toggle-slider"></span>
+          </label>
+        </div>
+        
+        <div class="skip-toggle-container">
+          <div class="skip-toggle-label">
+            <span class="skip-toggle-icon">🎴</span>
+            <span>抽牌環節</span>
+          </div>
+          <label class="skip-toggle">
+            <input type="checkbox" id="skip-draw" checked>
+            <span class="skip-toggle-slider"></span>
+          </label>
+        </div>
+        
+        <div class="skip-toggle-container">
+          <div class="skip-toggle-label">
+            <span class="skip-toggle-icon">🎤</span>
+            <span>開場環節</span>
+          </div>
+          <label class="skip-toggle">
+            <input type="checkbox" id="skip-opening">
+            <span class="skip-toggle-slider"></span>
+          </label>
+        </div>
+        
+        <div class="skip-toggle-container">
+          <div class="skip-toggle-label">
+            <span class="skip-toggle-icon">📋</span>
+            <span>復盤環節</span>
+          </div>
+          <label class="skip-toggle">
+            <input type="checkbox" id="skip-review">
+            <span class="skip-toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+      
+      <!-- 偵測到的片段列表 -->
+      <div class="layout-group">
+        <div class="layout-group-title">偵測到的片段 (<span id="segment-count">0</span>)</div>
+        <div class="segment-list" id="segment-list">
+          <div class="segment-item" style="color: #777; justify-content: center;">
+            尚無片段資料
+          </div>
+        </div>
+        <button id="clear-segments" class="clear-segments-button">🗑️ 清除此影片的片段資料</button>
+      </div>
+      
+      <!-- 手動新增片段 -->
+      <div class="layout-group">
+        <div class="layout-group-title">✏️ 手動新增片段</div>
+        <div class="manual-segment-form">
+          <div class="time-input-row">
+            <div class="time-input-group">
+              <label>開始時間</label>
+              <input type="text" id="manual-start-time" placeholder="0:00" class="time-input">
+            </div>
+            <span class="time-separator">→</span>
+            <div class="time-input-group">
+              <label>結束時間</label>
+              <input type="text" id="manual-end-time" placeholder="0:00" class="time-input">
+            </div>
+          </div>
+          <div class="segment-type-row">
+            <label>類型</label>
+            <select id="manual-segment-type" class="segment-type-select">
+              <option value="night">🌙 夜間環節</option>
+              <option value="draw">🎴 抽牌環節</option>
+              <option value="opening">🎤 開場環節</option>
+              <option value="review">📋 復盤環節</option>
+              <option value="custom">⏭️ 自訂跳過</option>
+            </select>
+          </div>
+          <button id="add-manual-segment" class="add-segment-button">➕ 新增片段</button>
+          <div class="manual-segment-hint">
+            提示：時間格式為 分:秒 或 時:分:秒<br>
+            例如：1:30 或 1:02:30
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
   <div class="info">
     此遮蔽功能僅在 YouTube 上使用時有效
   </div>
   
-  <div class="version">版本 1.3</div>
+  <div class="version">版本 1.5</div>
   
   <script src="popup.js"></script>
 </body>
