@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
     "name": "YouTube 狼人殺遮蔽助手",
-    "version": "1.5",
-    "description": "隱藏 YouTube 上狼人殺影片中的身分資訊，避免爆雷。支援 AI 字幕分析自動跳過夜間環節。",
+    "version": "1.6",
+    "description": "隱藏 YouTube 上狼人殺影片中的身分資訊，避免爆雷。支援字幕規則分析自動跳過夜間環節，可自訂偵測關鍵詞。",
     "permissions": [
       "activeTab",
       "storage"

@@ -363,11 +363,40 @@
     .analyze-status.success {
       color: #4CAF50;
       background-color: rgba(76, 175, 80, 0.1);
+      border-left: 3px solid #4CAF50;
     }
     .analyze-status.error {
       color: #f44336;
       background-color: rgba(244, 67, 54, 0.1);
+      border-left: 3px solid #f44336;
     }
+    .analyze-status.warning {
+      color: #ff9800;
+      background-color: rgba(255, 152, 0, 0.1);
+      border-left: 3px solid #ff9800;
+    }
+    .analyze-status.info {
+      color: #2196F3;
+      background-color: rgba(33, 150, 243, 0.1);
+      border-left: 3px solid #2196F3;
+    }
+    .confidence-indicator {
+      display: inline-block;
+      width: 60px;
+      height: 6px;
+      background-color: #333;
+      border-radius: 3px;
+      margin-left: 5px;
+      vertical-align: middle;
+    }
+    .confidence-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.3s;
+    }
+    .confidence-high { background-color: #4CAF50; }
+    .confidence-medium { background-color: #ff9800; }
+    .confidence-low { background-color: #f44336; }
     .skip-toggle-container {
       display: flex;
       align-items: center;
@@ -451,6 +480,49 @@
     .segment-item-time {
       color: #aaa;
     }
+    .segment-info {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .segment-type {
+      color: #4CAF50;
+      font-weight: bold;
+    }
+    .segment-time {
+      color: #888;
+      font-size: 10px;
+    }
+    .segment-buttons {
+      display: flex;
+      gap: 4px;
+    }
+    .segment-jump {
+      background-color: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      padding: 3px 8px;
+      font-size: 10px;
+      cursor: pointer;
+    }
+    .segment-jump:hover {
+      background-color: #1976D2;
+    }
+    .segment-delete {
+      background-color: transparent;
+      color: #f44336;
+      border: 1px solid #f44336;
+      border-radius: 3px;
+      padding: 2px 6px;
+      font-size: 12px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .segment-delete:hover {
+      background-color: #f44336;
+      color: white;
+    }
     .master-skip-toggle {
       margin-bottom: 15px;
       padding: 10px;
@@ -485,6 +557,7 @@
     }
     .time-input-group {
       flex: 1;
+      position: relative;
     }
     .time-input-group label {
       display: block;
@@ -493,10 +566,10 @@
       margin-bottom: 4px;
     }
     .time-input {
-      width: 100%;
+      width: calc(100% - 36px);
       padding: 8px;
       border: 1px solid #444;
-      border-radius: 4px;
+      border-radius: 4px 0 0 4px;
       background-color: #2a2a2a;
       color: white;
       font-size: 14px;
@@ -506,6 +579,24 @@
     .time-input:focus {
       outline: none;
       border-color: #4CAF50;
+    }
+    .use-current-btn {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      width: 36px;
+      height: 36px;
+      border: 1px solid #444;
+      border-left: none;
+      border-radius: 0 4px 4px 0;
+      background-color: #3a3a3a;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.2s;
+    }
+    .use-current-btn:hover {
+      background-color: #4CAF50;
     }
     .time-separator {
       color: #666;
@@ -551,6 +642,101 @@
     }
     .manual-segment-hint {
       margin-top: 8px;
+      font-size: 10px;
+      color: #777;
+      line-height: 1.4;
+    }
+    /* 自訂關鍵詞樣式 */
+    .custom-keywords-section {
+      margin-top: 8px;
+    }
+    .keyword-type-row {
+      margin-bottom: 10px;
+    }
+    .keyword-type-row label {
+      display: block;
+      font-size: 11px;
+      color: #aaa;
+      margin-bottom: 4px;
+    }
+    .keyword-input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .keyword-input {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #444;
+      border-radius: 4px;
+      background-color: #2a2a2a;
+      color: white;
+      font-size: 13px;
+    }
+    .keyword-input:focus {
+      outline: none;
+      border-color: #4CAF50;
+    }
+    .add-keyword-btn {
+      width: 36px;
+      height: 36px;
+      border: none;
+      border-radius: 4px;
+      background-color: #4CAF50;
+      color: white;
+      font-size: 18px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .add-keyword-btn:hover {
+      background-color: #45a049;
+    }
+    .custom-keywords-list {
+      max-height: 120px;
+      overflow-y: auto;
+      background-color: rgba(0, 0, 0, 0.3);
+      border-radius: 4px;
+      padding: 5px;
+      margin-bottom: 8px;
+    }
+    .keyword-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 8px;
+      font-size: 11px;
+      border-bottom: 1px solid #333;
+    }
+    .keyword-item:last-child {
+      border-bottom: none;
+    }
+    .keyword-item-type {
+      color: #4CAF50;
+      font-size: 10px;
+      margin-right: 8px;
+    }
+    .keyword-item-text {
+      flex: 1;
+      color: #fff;
+    }
+    .keyword-remove-btn {
+      background-color: transparent;
+      border: none;
+      color: #f44336;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px 6px;
+    }
+    .keyword-remove-btn:hover {
+      color: #ff6659;
+    }
+    .no-keywords-hint {
+      color: #777;
+      font-size: 11px;
+      text-align: center;
+      padding: 8px;
+    }
+    .custom-keywords-hint {
       font-size: 10px;
       color: #777;
       line-height: 1.4;
@@ -715,8 +901,8 @@
     <div class="segment-content" id="segment-content">
       <!-- 分析按鈕 -->
       <button id="analyze-video" class="analyze-button">
-        <span>🤖</span>
-        <span id="analyze-button-text">AI 分析字幕</span>
+        <span>🔍</span>
+        <span id="analyze-button-text">字幕規則分析</span>
       </button>
       
       <!-- 分析狀態 -->
@@ -806,11 +992,13 @@
             <div class="time-input-group">
               <label>開始時間</label>
               <input type="text" id="manual-start-time" placeholder="0:00" class="time-input">
+              <button id="use-current-start" class="use-current-btn" title="使用影片當前時間">📍</button>
             </div>
             <span class="time-separator">→</span>
             <div class="time-input-group">
               <label>結束時間</label>
               <input type="text" id="manual-end-time" placeholder="0:00" class="time-input">
+              <button id="use-current-end" class="use-current-btn" title="使用影片當前時間">📍</button>
             </div>
           </div>
           <div class="segment-type-row">
@@ -826,7 +1014,35 @@
           <button id="add-manual-segment" class="add-segment-button">➕ 新增片段</button>
           <div class="manual-segment-hint">
             提示：時間格式為 分:秒 或 時:分:秒<br>
-            例如：1:30 或 1:02:30
+            點擊 📍 可使用影片當前播放時間
+          </div>
+        </div>
+      </div>
+      
+      <!-- 自訂關鍵詞 -->
+      <div class="layout-group">
+        <div class="layout-group-title">🔤 自訂偵測關鍵詞</div>
+        <div class="custom-keywords-section">
+          <div class="keyword-type-row">
+            <label>環節類型</label>
+            <select id="keyword-segment-type" class="segment-type-select">
+              <option value="night-start">🌙 夜間開始</option>
+              <option value="night-end">🌙 夜間結束</option>
+              <option value="review-start">📋 復盤開始</option>
+              <option value="draw">🎴 抽牌環節</option>
+              <option value="opening">🎤 開場環節</option>
+            </select>
+          </div>
+          <div class="keyword-input-row">
+            <input type="text" id="custom-keyword-input" placeholder="輸入關鍵詞，如「進入黑夜」" class="keyword-input">
+            <button id="add-keyword-btn" class="add-keyword-btn" title="新增關鍵詞">+</button>
+          </div>
+          <div class="custom-keywords-list" id="custom-keywords-list">
+            <div class="no-keywords-hint">尚未新增自訂關鍵詞</div>
+          </div>
+          <div class="custom-keywords-hint">
+            提示：新增的關鍵詞會與內建關鍵詞一起用於字幕分析<br>
+            適合針對特定頻道的用語進行優化
           </div>
         </div>
       </div>
@@ -837,7 +1053,7 @@
     此遮蔽功能僅在 YouTube 上使用時有效
   </div>
   
-  <div class="version">版本 1.5</div>
+  <div class="version">版本 1.6</div>
   
   <script src="popup.js"></script>
 </body>

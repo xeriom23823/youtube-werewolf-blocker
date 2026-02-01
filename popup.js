@@ -34,10 +34,11 @@ document.addEventListener('DOMContentLoaded', function() {
   const clearSegmentsButton = document.getElementById('clear-segments');
   
   let selectedChannels = [];
-  let blockMode = 'all'; // 預設為所有頻道
-  let layoutConfig = getDefaultLayoutConfig(); // 版面配置
-  let editMode = false; // 編輯模式
-  let isAnalyzing = false; // 分析中狀態
+  let blockMode = 'all';
+  let layoutConfig = getDefaultLayoutConfig();
+  let editMode = false;
+  let isAnalyzing = false;
+  let customKeywords = [];
 
   // 版面配置預設值（與 content.js 保持一致）
   function getDefaultLayoutConfig() {
@@ -437,16 +438,12 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // ===== 片段設定相關函數 =====
   
-  // 初始化片段設定
   function initializeSegmentSettings() {
-    // 載入跳過設定
     loadSkipSettings();
-    
-    // 載入當前影片的片段資料
     loadCurrentVideoSegments();
-    
-    // 設置事件監聽
     setupSegmentEventListeners();
+    loadCustomKeywords();
+    setupCustomKeywordsEventListeners();
   }
   
   // 載入跳過設定
@@ -514,13 +511,13 @@ document.addEventListener('DOMContentLoaded', function() {
     segmentCountElement.textContent = segments.length.toString();
     analyzeStatus.textContent = `已偵測到 ${segments.length} 個片段`;
     
-    // 片段類型名稱映射
     const typeNames = {
       night: '🌙 夜間',
       draw: '🎴 抽牌',
       opening: '🎤 開場',
       review: '📋 復盤',
-      speaking: '💬 發言'
+      speaking: '💬 發言',
+      custom: '⏭️ 自訂'
     };
     
     segments.forEach(function(segment, index) {
@@ -542,14 +539,27 @@ document.addEventListener('DOMContentLoaded', function() {
       
       segmentItem.appendChild(segmentInfo);
       
-      // 跳轉按鈕
+      const buttonsContainer = document.createElement('div');
+      buttonsContainer.className = 'segment-buttons';
+      
       const jumpButton = document.createElement('button');
       jumpButton.className = 'segment-jump';
       jumpButton.textContent = '跳至';
       jumpButton.addEventListener('click', function() {
         jumpToSegment(segment.start);
       });
-      segmentItem.appendChild(jumpButton);
+      buttonsContainer.appendChild(jumpButton);
+      
+      const deleteButton = document.createElement('button');
+      deleteButton.className = 'segment-delete';
+      deleteButton.textContent = '×';
+      deleteButton.title = '刪除此片段';
+      deleteButton.addEventListener('click', function() {
+        deleteSegment(index);
+      });
+      buttonsContainer.appendChild(deleteButton);
+      
+      segmentItem.appendChild(buttonsContainer);
       
       segmentListElement.appendChild(segmentItem);
     });
@@ -569,6 +579,28 @@ document.addEventListener('DOMContentLoaded', function() {
         chrome.tabs.sendMessage(tabs[0].id, {
           action: 'skipToTime',
           time: time
+        });
+      }
+    });
+  }
+  
+  function deleteSegment(index) {
+    chrome.tabs.query({active: true, currentWindow: true, url: "*://www.youtube.com/*"}, function(tabs) {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: 'deleteSegment',
+          index: index
+        }, function(response) {
+          if (chrome.runtime.lastError) {
+            console.log('刪除片段失敗:', chrome.runtime.lastError);
+            return;
+          }
+          if (response && response.success) {
+            updateSegmentDisplay(response.segments);
+            analyzeStatus.textContent = '已刪除片段';
+          } else {
+            alert(response?.error || '刪除片段失敗');
+          }
         });
       }
     });
@@ -636,6 +668,52 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       });
     }
+    
+    // 「使用當前時間」按鈕
+    const useCurrentStartBtn = document.getElementById('use-current-start');
+    const useCurrentEndBtn = document.getElementById('use-current-end');
+    
+    if (useCurrentStartBtn) {
+      useCurrentStartBtn.addEventListener('click', function() {
+        getCurrentVideoTime(function(time) {
+          if (time !== null) {
+            manualStartTimeInput.value = formatTime(time);
+          }
+        });
+      });
+    }
+    
+    if (useCurrentEndBtn) {
+      useCurrentEndBtn.addEventListener('click', function() {
+        getCurrentVideoTime(function(time) {
+          if (time !== null) {
+            manualEndTimeInput.value = formatTime(time);
+          }
+        });
+      });
+    }
+  }
+  
+  // 取得影片當前時間
+  function getCurrentVideoTime(callback) {
+    chrome.tabs.query({active: true, currentWindow: true, url: "*://www.youtube.com/*"}, function(tabs) {
+      if (tabs && tabs.length > 0) {
+        chrome.tabs.sendMessage(tabs[0].id, { action: 'getCurrentVideoTime' }, function(response) {
+          if (chrome.runtime.lastError) {
+            console.log('無法取得影片時間:', chrome.runtime.lastError);
+            callback(null);
+            return;
+          }
+          if (response && response.success) {
+            callback(response.time);
+          } else {
+            callback(null);
+          }
+        });
+      } else {
+        callback(null);
+      }
+    });
   }
   
   // 解析時間字串為秒數
@@ -763,19 +841,38 @@ document.addEventListener('DOMContentLoaded', function() {
           isAnalyzing = false;
           analyzeVideoButton.disabled = false;
           analyzeVideoButton.classList.remove('analyzing');
-          analyzeButtonText.textContent = 'AI 分析字幕';
+          analyzeButtonText.textContent = '字幕規則分析';
           
           if (chrome.runtime.lastError) {
             console.log('分析失敗:', chrome.runtime.lastError);
+            analyzeStatus.className = 'analyze-status error';
             analyzeStatus.textContent = '分析失敗，請重新整理頁面後再試';
             return;
           }
           
           if (response && response.success) {
             updateSegmentDisplay(response.segments);
-            analyzeStatus.textContent = `分析完成！偵測到 ${response.segments.length} 個片段`;
+            
+            const segments = response.segments;
+            const avgConfidence = segments.length > 0 
+              ? segments.reduce((sum, s) => sum + (s.confidence || 0.5), 0) / segments.length 
+              : 0;
+            
+            if (segments.length === 0) {
+              analyzeStatus.className = 'analyze-status warning';
+              analyzeStatus.innerHTML = '分析完成，但未偵測到可跳過的片段。<br><small>可能原因：字幕內容不包含典型的狼人殺環節標記</small>';
+            } else if (avgConfidence >= 0.7) {
+              analyzeStatus.className = 'analyze-status success';
+              analyzeStatus.innerHTML = `✅ 分析完成！偵測到 <strong>${segments.length}</strong> 個片段<br><small>平均信心度：${(avgConfidence * 100).toFixed(0)}%</small>`;
+            } else if (avgConfidence >= 0.4) {
+              analyzeStatus.className = 'analyze-status warning';
+              analyzeStatus.innerHTML = `⚠️ 分析完成，偵測到 <strong>${segments.length}</strong> 個片段<br><small>信心度較低 (${(avgConfidence * 100).toFixed(0)}%)，建議手動確認</small>`;
+            } else {
+              analyzeStatus.className = 'analyze-status warning';
+              analyzeStatus.innerHTML = `⚠️ 偵測到 <strong>${segments.length}</strong> 個可能片段<br><small>信心度低，建議使用手動標記功能</small>`;
+            }
           } else {
-            // 使用 innerHTML 支援換行
+            analyzeStatus.className = 'analyze-status error';
             const errorMsg = response?.error || '分析失敗，可能沒有可用的字幕';
             analyzeStatus.innerHTML = errorMsg.replace(/\n/g, '<br>');
           }
@@ -784,7 +881,8 @@ document.addEventListener('DOMContentLoaded', function() {
         isAnalyzing = false;
         analyzeVideoButton.disabled = false;
         analyzeVideoButton.classList.remove('analyzing');
-        analyzeButtonText.textContent = 'AI 分析字幕';
+        analyzeButtonText.textContent = '字幕規則分析';
+        analyzeStatus.className = 'analyze-status info';
         analyzeStatus.textContent = '請在 YouTube 影片頁面使用此功能';
       }
     });
@@ -836,5 +934,146 @@ document.addEventListener('DOMContentLoaded', function() {
         });
       }
     });
+  }
+  
+  // ===== 自訂關鍵詞相關函數 =====
+  
+  const KEYWORD_TYPE_LABELS = {
+    'night-start': '🌙 夜間開始',
+    'night-end': '🌙 夜間結束',
+    'review-start': '📋 復盤開始',
+    'draw': '🎴 抽牌',
+    'opening': '🎤 開場'
+  };
+  
+  function loadCustomKeywords() {
+    chrome.storage.sync.get({ 'werewolfCustomKeywords': [] }, function(result) {
+      customKeywords = result.werewolfCustomKeywords || [];
+      renderCustomKeywordsList();
+    });
+  }
+  
+  function saveCustomKeywords() {
+    chrome.storage.sync.set({ 'werewolfCustomKeywords': customKeywords }, function() {
+      sendCustomKeywordsToTabs();
+    });
+  }
+  
+  function sendCustomKeywordsToTabs() {
+    chrome.tabs.query({url: "*://www.youtube.com/*"}, function(tabs) {
+      if (tabs && tabs.length > 0) {
+        tabs.forEach(function(tab) {
+          try {
+            chrome.tabs.sendMessage(tab.id, {
+              action: 'updateCustomKeywords',
+              keywords: customKeywords
+            });
+          } catch (error) {
+            console.log('發送自訂關鍵詞時出錯:', error);
+          }
+        });
+      }
+    });
+  }
+  
+  function renderCustomKeywordsList() {
+    const listElement = document.getElementById('custom-keywords-list');
+    if (!listElement) return;
+    
+    listElement.innerHTML = '';
+    
+    if (customKeywords.length === 0) {
+      listElement.innerHTML = '<div class="no-keywords-hint">尚未新增自訂關鍵詞</div>';
+      return;
+    }
+    
+    customKeywords.forEach(function(kw, index) {
+      const item = document.createElement('div');
+      item.className = 'keyword-item';
+      
+      const typeLabel = document.createElement('span');
+      typeLabel.className = 'keyword-item-type';
+      typeLabel.textContent = KEYWORD_TYPE_LABELS[kw.type] || kw.type;
+      
+      const textSpan = document.createElement('span');
+      textSpan.className = 'keyword-item-text';
+      textSpan.textContent = kw.text;
+      
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'keyword-remove-btn';
+      removeBtn.textContent = '×';
+      removeBtn.title = '移除此關鍵詞';
+      removeBtn.addEventListener('click', function() {
+        removeCustomKeyword(index);
+      });
+      
+      item.appendChild(typeLabel);
+      item.appendChild(textSpan);
+      item.appendChild(removeBtn);
+      listElement.appendChild(item);
+    });
+  }
+  
+  function addCustomKeyword() {
+    const input = document.getElementById('custom-keyword-input');
+    const typeSelect = document.getElementById('keyword-segment-type');
+    
+    const text = input.value.trim();
+    const type = typeSelect.value;
+    
+    if (!text) {
+      alert('請輸入關鍵詞');
+      input.focus();
+      return;
+    }
+    
+    if (text.length < 2) {
+      alert('關鍵詞至少需要 2 個字元');
+      input.focus();
+      return;
+    }
+    
+    const exists = customKeywords.some(kw => kw.text === text && kw.type === type);
+    if (exists) {
+      alert('此關鍵詞已存在');
+      input.focus();
+      return;
+    }
+    
+    customKeywords.push({
+      type: type,
+      text: text,
+      weight: 7
+    });
+    
+    saveCustomKeywords();
+    renderCustomKeywordsList();
+    input.value = '';
+    input.focus();
+  }
+  
+  function removeCustomKeyword(index) {
+    if (index >= 0 && index < customKeywords.length) {
+      customKeywords.splice(index, 1);
+      saveCustomKeywords();
+      renderCustomKeywordsList();
+    }
+  }
+  
+  function setupCustomKeywordsEventListeners() {
+    const addBtn = document.getElementById('add-keyword-btn');
+    const input = document.getElementById('custom-keyword-input');
+    
+    if (addBtn) {
+      addBtn.addEventListener('click', addCustomKeyword);
+    }
+    
+    if (input) {
+      input.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+          addCustomKeyword();
+        }
+      });
+    }
   }
 });

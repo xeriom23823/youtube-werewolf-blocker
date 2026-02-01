@@ -18,65 +18,300 @@ let segmentSkipSettings = { // 各階段跳過設定
     night: true,      // 夜間環節預設跳過
     draw: true,       // 抽牌環節預設跳過
     opening: false,   // 開場環節預設不跳過
-    review: false     // 復盤環節預設不跳過
+    review: false
 };
-let isAnalyzing = false; // 是否正在分析中
-let skipEnabled = true; // 跳過功能總開關
-let lastSkipTime = 0; // 上次跳過的時間（防止連續跳過）
-let skipNotificationEnabled = true; // 跳過提示開關
+let isAnalyzing = false;
+let skipEnabled = true;
+let lastSkipTime = 0;
+let skipNotificationEnabled = true;
+let customKeywords = [];
 
-// ===== 狼人殺階段識別規則 =====
+// ===== 狼人殺階段識別規則（強化版）=====
 const SEGMENT_RULES = {
-    // 夜間環節關鍵詞 (繁體/簡體)
+    // 夜間環節關鍵詞 (繁體/簡體) - 權重越高越可靠
     night: {
         start: [
-            '請閉眼', '请闭眼', '閉眼', '闭眼',
-            '天黑請閉眼', '天黑请闭眼', '天黑了',
-            '進入黑夜', '进入黑夜', '夜晚來臨', '夜晚来临'
+            // 高權重 - 非常明確的夜間開始標誌
+            { text: '天黑請閉眼', weight: 10 },
+            { text: '天黑请闭眼', weight: 10 },
+            { text: '請閉眼', weight: 8 },
+            { text: '请闭眼', weight: 8 },
+            { text: '進入黑夜', weight: 8 },
+            { text: '进入黑夜', weight: 8 },
+            // 中權重
+            { text: '閉眼', weight: 5 },
+            { text: '闭眼', weight: 5 },
+            { text: '天黑了', weight: 6 },
+            { text: '夜晚來臨', weight: 6 },
+            { text: '夜晚来临', weight: 6 },
+            { text: '進入夜晚', weight: 7 },
+            { text: '进入夜晚', weight: 7 },
+            // 次要線索 - 角色行動提示
+            { text: '狼人請睜眼', weight: 6 },
+            { text: '狼人请睁眼', weight: 6 },
+            { text: '預言家請睜眼', weight: 5 },
+            { text: '预言家请睁眼', weight: 5 },
+            { text: '守衛請睜眼', weight: 5 },
+            { text: '守卫请睁眼', weight: 5 },
+            { text: '女巫請睜眼', weight: 5 },
+            { text: '女巫请睁眼', weight: 5 }
         ],
         end: [
-            '天亮了', '天亮請睜眼', '天亮请睁眼',
-            '請睜眼', '请睁眼', '睜眼', '睁眼',
-            '天亮', '白天來臨', '白天来临'
+            // 高權重 - 非常明確的夜間結束標誌
+            { text: '天亮請睜眼', weight: 10 },
+            { text: '天亮请睁眼', weight: 10 },
+            { text: '天亮了', weight: 9 },
+            { text: '請睜眼', weight: 7 },
+            { text: '请睁眼', weight: 7 },
+            // 中權重
+            { text: '睜眼', weight: 4 },
+            { text: '睁眼', weight: 4 },
+            { text: '天亮', weight: 6 },
+            { text: '白天來臨', weight: 7 },
+            { text: '白天来临', weight: 7 },
+            { text: '進入白天', weight: 7 },
+            { text: '进入白天', weight: 7 },
+            // 發言開始也意味著夜晚結束
+            { text: '請發言', weight: 5 },
+            { text: '请发言', weight: 5 },
+            { text: '開始發言', weight: 5 },
+            { text: '开始发言', weight: 5 }
         ],
-        label: '夜間環節'
+        label: '夜間環節',
+        minDuration: 5,  // 夜間環節最少持續時間（秒）
+        maxDuration: 300 // 夜間環節最長持續時間（秒）
     },
     // 發言環節關鍵詞
     speaking: {
         markers: [
-            '號玩家發言', '号玩家发言', '號發言', '号发言',
-            '開始發言', '开始发言', '請發言', '请发言',
-            '輪到', '轮到', '你的發言', '你的发言'
+            { text: '號玩家發言', weight: 8 },
+            { text: '号玩家发言', weight: 8 },
+            { text: '號發言', weight: 7 },
+            { text: '号发言', weight: 7 },
+            { text: '開始發言', weight: 6 },
+            { text: '开始发言', weight: 6 },
+            { text: '請發言', weight: 6 },
+            { text: '请发言', weight: 6 },
+            { text: '輪到', weight: 4 },
+            { text: '轮到', weight: 4 },
+            { text: '你的發言', weight: 5 },
+            { text: '你的发言', weight: 5 }
         ],
         label: '發言環節'
     },
     // 復盤環節關鍵詞
     review: {
         start: [
-            '遊戲結束', '游戏结束', '公布身份', '公布身分',
-            '本局結束', '本局结束', '勝利', '胜利',
-            '狼人勝利', '狼人胜利', '好人勝利', '好人胜利',
-            '來復盤', '来复盘', '復盤', '复盘'
+            // 高權重 - 明確的遊戲結束標誌
+            { text: '遊戲結束', weight: 10 },
+            { text: '游戏结束', weight: 10 },
+            { text: '本局結束', weight: 10 },
+            { text: '本局结束', weight: 10 },
+            { text: '公布身份', weight: 9 },
+            { text: '公布身分', weight: 9 },
+            // 中權重
+            { text: '狼人勝利', weight: 8 },
+            { text: '狼人胜利', weight: 8 },
+            { text: '好人勝利', weight: 8 },
+            { text: '好人胜利', weight: 8 },
+            { text: '村民勝利', weight: 8 },
+            { text: '村民胜利', weight: 8 },
+            { text: '來復盤', weight: 7 },
+            { text: '来复盘', weight: 7 },
+            { text: '復盤', weight: 5 },
+            { text: '复盘', weight: 5 },
+            { text: '勝利', weight: 4 },
+            { text: '胜利', weight: 4 },
+            { text: '賽後', weight: 6 },
+            { text: '赛后', weight: 6 }
         ],
         label: '復盤環節'
     },
     // 抽牌環節關鍵詞
     draw: {
         markers: [
-            '查看身份', '查看身分', '抽牌', '確認身份', '确认身份',
-            '看牌', '請查看', '请查看', '底牌'
+            { text: '查看身份', weight: 8 },
+            { text: '查看身分', weight: 8 },
+            { text: '確認身份', weight: 8 },
+            { text: '确认身份', weight: 8 },
+            { text: '抽牌', weight: 7 },
+            { text: '看牌', weight: 6 },
+            { text: '請查看', weight: 6 },
+            { text: '请查看', weight: 6 },
+            { text: '底牌', weight: 5 },
+            { text: '發牌', weight: 6 },
+            { text: '发牌', weight: 6 }
         ],
         label: '抽牌環節'
     },
     // 開場環節關鍵詞
     opening: {
         markers: [
-            '歡迎', '欢迎', '嘉賓', '嘉宾',
-            '今天', '本期', '大家好'
+            { text: '歡迎來到', weight: 7 },
+            { text: '欢迎来到', weight: 7 },
+            { text: '歡迎', weight: 4 },
+            { text: '欢迎', weight: 4 },
+            { text: '嘉賓', weight: 5 },
+            { text: '嘉宾', weight: 5 },
+            { text: '今天', weight: 2 },
+            { text: '本期', weight: 4 },
+            { text: '大家好', weight: 3 }
         ],
         label: '開場環節'
     }
 };
+
+// ===== 文字正規化與模糊匹配工具 =====
+
+// 常見 ASR 錯字對照表
+const ASR_CORRECTIONS = {
+    // 睜/增/正 混淆
+    '增眼': '睜眼', '正眼': '睜眼', '爭眼': '睜眼',
+    '增開': '睜開', '正開': '睜開',
+    // 閉/必/比 混淆  
+    '必眼': '閉眼', '比眼': '閉眼', '壁眼': '閉眼',
+    // 天亮/天涼 混淆
+    '天涼了': '天亮了', '天量了': '天亮了',
+    // 天黑/天嘿 混淆
+    '天嘿': '天黑', '天黑額': '天黑了',
+    // 狼人/浪人 混淆
+    '浪人': '狼人', '郎人': '狼人',
+    // 發言/發演 混淆
+    '發演': '發言', '法言': '發言',
+    // 預言家/語言家 混淆
+    '語言家': '預言家', '預言架': '預言家',
+    // 守衛/首位 混淆
+    '首位': '守衛', '手衛': '守衛',
+    // 女巫/女無 混淆
+    '女無': '女巫', '女屋': '女巫',
+    // 復盤/父盤 混淆
+    '父盤': '復盤', '覆盤': '復盤', '夫盤': '復盤',
+    // 身份/身分/深分 混淆
+    '深分': '身份', '身分': '身份',
+    // 結束/潔束 混淆
+    '潔束': '結束', '節束': '結束',
+    // 勝利/聖禮 混淆
+    '聖禮': '勝利', '盛利': '勝利'
+};
+
+// 文字正規化函數
+function normalizeText(text) {
+    if (!text) return '';
+    
+    let normalized = text
+        // 移除多餘空白
+        .replace(/\s+/g, ' ')
+        .trim()
+        // 全形轉半形數字
+        .replace(/[０-９]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xFEE0))
+        // 全形轉半形英文
+        .replace(/[Ａ-Ｚａ-ｚ]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xFEE0))
+        // 移除常見標點符號
+        .replace(/[，。！？、；：""''【】《》（）\[\]]/g, ' ')
+        // 移除 HTML 實體
+        .replace(/&[a-z]+;/gi, ' ')
+        // 移除多餘空白（再次清理）
+        .replace(/\s+/g, ' ')
+        .trim();
+    
+    // 套用 ASR 錯字修正
+    for (const [wrong, correct] of Object.entries(ASR_CORRECTIONS)) {
+        normalized = normalized.replace(new RegExp(wrong, 'g'), correct);
+    }
+    
+    return normalized;
+}
+
+// 計算編輯距離（Levenshtein Distance）
+function levenshteinDistance(str1, str2) {
+    const m = str1.length;
+    const n = str2.length;
+    
+    // 如果其中一個字串為空
+    if (m === 0) return n;
+    if (n === 0) return m;
+    
+    // 建立距離矩陣
+    const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+    
+    for (let i = 0; i <= m; i++) dp[i][0] = i;
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+            dp[i][j] = Math.min(
+                dp[i - 1][j] + 1,      // 刪除
+                dp[i][j - 1] + 1,      // 插入
+                dp[i - 1][j - 1] + cost // 替換
+            );
+        }
+    }
+    
+    return dp[m][n];
+}
+
+// 模糊匹配：檢查文字是否與關鍵詞相似
+function fuzzyMatch(text, keyword, maxDistance = 2) {
+    // 先嘗試精確匹配
+    if (text.includes(keyword)) {
+        return { matched: true, distance: 0, exact: true };
+    }
+    
+    // 對於較短的關鍵詞，只接受更小的編輯距離
+    const allowedDistance = Math.min(maxDistance, Math.floor(keyword.length / 2));
+    
+    // 滑動窗口模糊匹配
+    const keywordLen = keyword.length;
+    for (let i = 0; i <= text.length - keywordLen + allowedDistance; i++) {
+        const windowEnd = Math.min(i + keywordLen + allowedDistance, text.length);
+        const window = text.substring(i, windowEnd);
+        
+        // 在窗口內尋找最佳匹配
+        for (let len = keywordLen - allowedDistance; len <= keywordLen + allowedDistance && len <= window.length; len++) {
+            const substr = window.substring(0, len);
+            const distance = levenshteinDistance(substr, keyword);
+            
+            if (distance <= allowedDistance) {
+                return { matched: true, distance: distance, exact: false };
+            }
+        }
+    }
+    
+    return { matched: false, distance: Infinity, exact: false };
+}
+
+// 計算關鍵詞匹配信心分數
+function calculateMatchScore(text, keywordRules) {
+    const normalizedText = normalizeText(text);
+    let totalScore = 0;
+    let matchedKeywords = [];
+    
+    for (const rule of keywordRules) {
+        const keyword = typeof rule === 'string' ? rule : rule.text;
+        const weight = typeof rule === 'string' ? 5 : rule.weight;
+        
+        // 嘗試精確匹配
+        if (normalizedText.includes(keyword)) {
+            totalScore += weight;
+            matchedKeywords.push({ keyword, weight, exact: true });
+            continue;
+        }
+        
+        // 嘗試模糊匹配（僅對較長的關鍵詞）
+        if (keyword.length >= 3) {
+            const fuzzyResult = fuzzyMatch(normalizedText, keyword, 1);
+            if (fuzzyResult.matched && !fuzzyResult.exact) {
+                // 模糊匹配給予較低分數
+                const adjustedWeight = Math.floor(weight * 0.6);
+                totalScore += adjustedWeight;
+                matchedKeywords.push({ keyword, weight: adjustedWeight, exact: false, distance: fuzzyResult.distance });
+            }
+        }
+    }
+    
+    return { score: totalScore, matchedKeywords };
+}
 
 // ===== 片段分析核心函數 =====
 
@@ -547,111 +782,177 @@ function fetchSubtitlesViaBackground(videoId) {
     });
 }
 
-// 分析字幕並識別片段
+// 分析字幕並識別片段（強化版：使用信心分數系統）
 function analyzeSubtitles(subtitles) {
     const segments = [];
-    let nightStartTime = null;
-    let reviewStartTime = null;
+    const analysisLog = [];
+    
+    const rules = getEffectiveRules();
+    
+    let nightCandidate = null;
+    let reviewCandidate = null;
+    
+    const NIGHT_START_THRESHOLD = 5;
+    const NIGHT_END_THRESHOLD = 5;
+    const REVIEW_START_THRESHOLD = 6;
+    const DRAW_THRESHOLD = 5;
+    
+    console.log(`開始分析 ${subtitles.length} 條字幕（含 ${customKeywords.length} 個自訂關鍵詞）...`);
     
     for (let i = 0; i < subtitles.length; i++) {
         const subtitle = subtitles[i];
         const text = subtitle.text;
         const startTime = subtitle.start;
         const endTime = subtitle.end;
+        const normalizedText = normalizeText(text);
         
-        // 檢測夜間環節開始
-        if (nightStartTime === null) {
-            for (const keyword of SEGMENT_RULES.night.start) {
-                if (text.includes(keyword)) {
-                    nightStartTime = startTime;
-                    console.log(`偵測到夜間開始: ${keyword} at ${startTime}s`);
-                    break;
-                }
+        if (nightCandidate === null) {
+            const nightStartMatch = calculateMatchScore(text, rules.night.start);
+            if (nightStartMatch.score >= NIGHT_START_THRESHOLD) {
+                nightCandidate = {
+                    startTime: startTime,
+                    startScore: nightStartMatch.score,
+                    startKeywords: nightStartMatch.matchedKeywords
+                };
+                console.log(`🌙 候選夜間開始 [信心:${nightStartMatch.score}]: ${formatTimeForLog(startTime)} - "${text.substring(0, 30)}..."`);
+                analysisLog.push({
+                    type: 'night_start_candidate',
+                    time: startTime,
+                    score: nightStartMatch.score,
+                    keywords: nightStartMatch.matchedKeywords
+                });
             }
-        }
-        
-        // 檢測夜間環節結束
-        if (nightStartTime !== null) {
-            for (const keyword of SEGMENT_RULES.night.end) {
-                if (text.includes(keyword)) {
-                    // 確保有最小時長 (至少3秒)
-                    if (startTime - nightStartTime >= 3) {
-                        segments.push({
-                            type: 'night',
-                            start: nightStartTime,
-                            end: startTime,
-                            label: SEGMENT_RULES.night.label,
-                            shouldSkip: segmentSkipSettings.night
-                        });
-                        console.log(`夜間環節: ${nightStartTime}s - ${startTime}s`);
-                    }
-                    nightStartTime = null;
-                    break;
-                }
-            }
-        }
-        
-        // 檢測復盤環節開始
-        if (reviewStartTime === null) {
-            for (const keyword of SEGMENT_RULES.review.start) {
-                if (text.includes(keyword)) {
-                    reviewStartTime = startTime;
-                    console.log(`偵測到復盤開始: ${keyword} at ${startTime}s`);
-                    break;
-                }
-            }
-        }
-        
-        // 檢測抽牌環節
-        for (const keyword of SEGMENT_RULES.draw.markers) {
-            if (text.includes(keyword)) {
-                // 抽牌通常持續較短時間，標記前後10秒
-                const drawStart = Math.max(0, startTime - 5);
-                const drawEnd = endTime + 10;
+        } else {
+            const nightEndMatch = calculateMatchScore(text, rules.night.end);
+            
+            if (nightEndMatch.score >= NIGHT_END_THRESHOLD) {
+                const duration = startTime - nightCandidate.startTime;
+                const minDuration = rules.night.minDuration || 5;
+                const maxDuration = rules.night.maxDuration || 300;
                 
-                // 避免重複標記
-                const isDuplicate = segments.some(s => 
-                    s.type === 'draw' && 
-                    Math.abs(s.start - drawStart) < 15
-                );
-                
-                if (!isDuplicate) {
+                if (duration >= minDuration && duration <= maxDuration) {
+                    const combinedScore = (nightCandidate.startScore + nightEndMatch.score) / 2;
+                    const confidence = Math.min(1, combinedScore / 15);
+                    
                     segments.push({
-                        type: 'draw',
-                        start: drawStart,
-                        end: drawEnd,
-                        label: SEGMENT_RULES.draw.label,
-                        shouldSkip: segmentSkipSettings.draw
+                        type: 'night',
+                        start: nightCandidate.startTime,
+                        end: startTime,
+                        label: rules.night.label,
+                        shouldSkip: segmentSkipSettings.night,
+                        confidence: confidence,
+                        matchInfo: {
+                            startScore: nightCandidate.startScore,
+                            endScore: nightEndMatch.score,
+                            startKeywords: nightCandidate.startKeywords,
+                            endKeywords: nightEndMatch.matchedKeywords
+                        }
                     });
-                    console.log(`抽牌環節: ${drawStart}s - ${drawEnd}s`);
+                    
+                    console.log(`✅ 確認夜間環節 [信心:${(confidence * 100).toFixed(0)}%]: ${formatTimeForLog(nightCandidate.startTime)} - ${formatTimeForLog(startTime)} (${duration.toFixed(1)}s)`);
+                    analysisLog.push({
+                        type: 'night_confirmed',
+                        start: nightCandidate.startTime,
+                        end: startTime,
+                        confidence: confidence
+                    });
+                    
+                    nightCandidate = null;
+                } else if (duration > maxDuration) {
+                    console.log(`⚠️ 夜間候選超時 (${duration.toFixed(1)}s > ${maxDuration}s)，重置`);
+                    nightCandidate = null;
                 }
-                break;
+            }
+        }
+        
+        if (reviewCandidate === null) {
+            const reviewMatch = calculateMatchScore(text, rules.review.start);
+            if (reviewMatch.score >= REVIEW_START_THRESHOLD) {
+                reviewCandidate = {
+                    startTime: startTime,
+                    startScore: reviewMatch.score,
+                    startKeywords: reviewMatch.matchedKeywords
+                };
+                console.log(`📋 候選復盤開始 [信心:${reviewMatch.score}]: ${formatTimeForLog(startTime)} - "${text.substring(0, 30)}..."`);
+                analysisLog.push({
+                    type: 'review_start_candidate',
+                    time: startTime,
+                    score: reviewMatch.score,
+                    keywords: reviewMatch.matchedKeywords
+                });
+            }
+        }
+        
+        const drawMatch = calculateMatchScore(text, rules.draw.markers);
+        if (drawMatch.score >= DRAW_THRESHOLD) {
+            const drawStart = Math.max(0, startTime - 5);
+            const drawEnd = endTime + 15;
+            
+            const isDuplicate = segments.some(s => 
+                s.type === 'draw' && 
+                Math.abs(s.start - drawStart) < 20
+            );
+            
+            if (!isDuplicate) {
+                const confidence = Math.min(1, drawMatch.score / 10);
+                segments.push({
+                    type: 'draw',
+                    start: drawStart,
+                    end: drawEnd,
+                    label: rules.draw.label,
+                    shouldSkip: segmentSkipSettings.draw,
+                    confidence: confidence,
+                    matchInfo: {
+                        score: drawMatch.score,
+                        keywords: drawMatch.matchedKeywords
+                    }
+                });
+                console.log(`🎴 抽牌環節 [信心:${(confidence * 100).toFixed(0)}%]: ${formatTimeForLog(drawStart)} - ${formatTimeForLog(drawEnd)}`);
             }
         }
     }
     
-    // 如果夜間環節未結束（可能字幕不完整），使用最後一個字幕時間作為結束
-    if (nightStartTime !== null && subtitles.length > 0) {
+    if (nightCandidate !== null && subtitles.length > 0) {
         const lastSubtitle = subtitles[subtitles.length - 1];
-        segments.push({
-            type: 'night',
-            start: nightStartTime,
-            end: lastSubtitle.end,
-            label: SEGMENT_RULES.night.label,
-            shouldSkip: segmentSkipSettings.night
-        });
+        const duration = lastSubtitle.end - nightCandidate.startTime;
+        const maxDuration = rules.night.maxDuration || 300;
+        
+        if (duration <= maxDuration && duration >= 5) {
+            const confidence = Math.min(0.5, nightCandidate.startScore / 20);
+            segments.push({
+                type: 'night',
+                start: nightCandidate.startTime,
+                end: lastSubtitle.end,
+                label: rules.night.label + ' (未偵測到結束)',
+                shouldSkip: segmentSkipSettings.night,
+                confidence: confidence,
+                matchInfo: {
+                    startScore: nightCandidate.startScore,
+                    endScore: 0,
+                    note: '未偵測到結束關鍵詞'
+                }
+            });
+            console.log(`⚠️ 夜間環節（未結束）[信心:${(confidence * 100).toFixed(0)}%]: ${formatTimeForLog(nightCandidate.startTime)} - ${formatTimeForLog(lastSubtitle.end)}`);
+        }
     }
     
-    // 如果有復盤環節，標記到影片結尾
-    if (reviewStartTime !== null && subtitles.length > 0) {
+    if (reviewCandidate !== null && subtitles.length > 0) {
         const lastSubtitle = subtitles[subtitles.length - 1];
+        const confidence = Math.min(1, reviewCandidate.startScore / 12);
+        
         segments.push({
             type: 'review',
-            start: reviewStartTime,
-            end: lastSubtitle.end + 60, // 假設復盤到影片結束
-            label: SEGMENT_RULES.review.label,
-            shouldSkip: segmentSkipSettings.review
+            start: reviewCandidate.startTime,
+            end: lastSubtitle.end + 60,
+            label: rules.review.label,
+            shouldSkip: segmentSkipSettings.review,
+            confidence: confidence,
+            matchInfo: {
+                startScore: reviewCandidate.startScore,
+                startKeywords: reviewCandidate.startKeywords
+            }
         });
+        console.log(`📋 復盤環節 [信心:${(confidence * 100).toFixed(0)}%]: ${formatTimeForLog(reviewCandidate.startTime)} - 影片結尾`);
     }
     
     // 按開始時間排序
@@ -660,7 +961,42 @@ function analyzeSubtitles(subtitles) {
     // 合併重疊的相同類型片段
     const mergedSegments = mergeOverlappingSegments(segments);
     
+    // 產生分析摘要
+    const summary = generateAnalysisSummary(mergedSegments);
+    console.log('📊 分析摘要:', summary);
+    
     return mergedSegments;
+}
+
+// 格式化時間供日誌使用
+function formatTimeForLog(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// 產生分析摘要
+function generateAnalysisSummary(segments) {
+    const summary = {
+        total: segments.length,
+        byType: {},
+        avgConfidence: 0
+    };
+    
+    let totalConfidence = 0;
+    
+    for (const seg of segments) {
+        if (!summary.byType[seg.type]) {
+            summary.byType[seg.type] = { count: 0, totalDuration: 0 };
+        }
+        summary.byType[seg.type].count++;
+        summary.byType[seg.type].totalDuration += (seg.end - seg.start);
+        totalConfidence += (seg.confidence || 0.5);
+    }
+    
+    summary.avgConfidence = segments.length > 0 ? (totalConfidence / segments.length) : 0;
+    
+    return summary;
 }
 
 // 合併重疊的相同類型片段
@@ -799,6 +1135,55 @@ function saveSkipSettings() {
         'werewolfSkipEnabled': skipEnabled,
         'werewolfSkipNotification': skipNotificationEnabled
     });
+}
+
+function loadCustomKeywords() {
+    chrome.storage.sync.get({ 'werewolfCustomKeywords': [] }, (result) => {
+        customKeywords = result.werewolfCustomKeywords || [];
+        console.log('載入自訂關鍵詞:', customKeywords.length, '個');
+    });
+}
+
+function saveCustomKeywords() {
+    chrome.storage.sync.set({ 'werewolfCustomKeywords': customKeywords });
+}
+
+function getEffectiveRules() {
+    const rules = JSON.parse(JSON.stringify(SEGMENT_RULES));
+    
+    for (const kw of customKeywords) {
+        const keyword = { text: kw.text, weight: kw.weight || 7 };
+        
+        switch (kw.type) {
+            case 'night-start':
+                if (rules.night && rules.night.start) {
+                    rules.night.start.push(keyword);
+                }
+                break;
+            case 'night-end':
+                if (rules.night && rules.night.end) {
+                    rules.night.end.push(keyword);
+                }
+                break;
+            case 'review-start':
+                if (rules.review && rules.review.start) {
+                    rules.review.start.push(keyword);
+                }
+                break;
+            case 'draw':
+                if (rules.draw && rules.draw.markers) {
+                    rules.draw.markers.push(keyword);
+                }
+                break;
+            case 'opening':
+                if (rules.opening && rules.opening.markers) {
+                    rules.opening.markers.push(keyword);
+                }
+                break;
+        }
+    }
+    
+    return rules;
 }
 
 // ===== 影片時間監聽與自動跳過 =====
@@ -1174,6 +1559,28 @@ function resetLayoutConfig() {
     saveLayoutConfig();
 }
 
+// 監聽 storage 變更，確保跨分頁/跨影片套用同一組排版參數
+function setupLayoutConfigChangeListener() {
+    try {
+        chrome.storage?.onChanged?.addListener((changes, areaName) => {
+            if (areaName !== 'sync') return;
+            if (!changes.werewolfLayoutConfig) return;
+
+            const next = changes.werewolfLayoutConfig.newValue;
+            layoutConfig = { ...getDefaultLayoutConfig(), ...(next || {}) };
+            console.log('偵測到版面配置更新，已套用:', layoutConfig);
+
+            if (isWatchPage() && shouldEnableBlocker()) {
+                requestAnimationFrame(() => {
+                    hideIdentityInfo();
+                });
+            }
+        });
+    } catch (e) {
+        console.log('setupLayoutConfigChangeListener 失敗:', e?.message);
+    }
+}
+
 // ===== 事件處理函數 =====
 // 監聽來自 popup 的訊息
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
@@ -1302,30 +1709,52 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         }
         
         const newSegment = request.segment;
-        if (!newSegment || newSegment.startTime === undefined || newSegment.endTime === undefined) {
+        if (!newSegment || (newSegment.start === undefined && newSegment.startTime === undefined)) {
             sendResponse({ success: false, error: '片段資料無效' });
             return true;
         }
         
-        // 載入現有片段
-        const key = `werewolfSegments_${videoId}`;
-        chrome.storage.local.get(key, (result) => {
-            let segments = result[key] || [];
+        const segmentToAdd = {
+            type: newSegment.type || 'custom',
+            start: newSegment.start ?? newSegment.startTime,
+            end: newSegment.end ?? newSegment.endTime,
+            label: newSegment.label || '手動標記',
+            shouldSkip: true,
+            manual: true,
+            confidence: 1.0
+        };
+        
+        loadVideoSegments(videoId).then((data) => {
+            let segments = data?.segments || videoSegments || [];
             
-            // 添加新片段
-            segments.push(newSegment);
+            segments.push(segmentToAdd);
+            segments.sort((a, b) => (a.start ?? a.startTime) - (b.start ?? b.startTime));
             
-            // 依開始時間排序
-            segments.sort((a, b) => a.startTime - b.startTime);
+            const mergedSegments = mergeOverlappingSegments(segments);
+            videoSegments = mergedSegments;
             
-            // 保存
-            chrome.storage.local.set({ [key]: segments }, () => {
-                // 更新當前使用的片段
-                videoSegments = segments;
-                console.log(`已新增手動片段: ${newSegment.startTime} - ${newSegment.endTime} (${newSegment.type})`);
-                sendResponse({ success: true, segments: segments });
+            saveVideoSegments(videoId, mergedSegments).then(() => {
+                console.log(`已新增手動片段: ${segmentToAdd.start} - ${segmentToAdd.end} (${segmentToAdd.type})`);
+                sendResponse({ success: true, segments: mergedSegments });
             });
         });
+        return true;
+    } else if (request.action === 'getCurrentVideoTime') {
+        const video = document.querySelector('video');
+        if (video) {
+            sendResponse({ success: true, time: video.currentTime, duration: video.duration });
+        } else {
+            sendResponse({ success: false, error: '找不到影片' });
+        }
+        return true;
+    } else if (request.action === 'markSegmentStart') {
+        const video = document.querySelector('video');
+        if (video) {
+            const currentTime = video.currentTime;
+            sendResponse({ success: true, time: currentTime });
+        } else {
+            sendResponse({ success: false, error: '找不到影片' });
+        }
         return true;
     } else if (request.action === 'skipToTime') {
         const video = document.querySelector('video');
@@ -1335,6 +1764,36 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         } else {
             sendResponse({ success: false, error: '無法跳轉' });
         }
+        return true;
+    } else if (request.action === 'updateCustomKeywords') {
+        console.log("收到更新自訂關鍵詞請求:", request.keywords);
+        customKeywords = request.keywords || [];
+        saveCustomKeywords();
+        sendResponse({ success: true });
+        return true;
+    } else if (request.action === 'getCustomKeywords') {
+        sendResponse({ success: true, keywords: customKeywords });
+        return true;
+    } else if (request.action === 'deleteSegment') {
+        const videoId = currentVideoId || getVideoId();
+        const index = request.index;
+        
+        if (!videoId) {
+            sendResponse({ success: false, error: '無法獲取影片 ID' });
+            return true;
+        }
+        
+        if (index === undefined || index < 0 || index >= videoSegments.length) {
+            sendResponse({ success: false, error: '無效的片段索引' });
+            return true;
+        }
+        
+        const removedSegment = videoSegments.splice(index, 1)[0];
+        console.log(`已刪除片段: ${removedSegment.type} (${removedSegment.start} - ${removedSegment.end})`);
+        
+        saveVideoSegments(videoId, videoSegments).then(() => {
+            sendResponse({ success: true, segments: videoSegments });
+        });
         return true;
     }
 });
@@ -2217,21 +2676,20 @@ function setupYouTubeFullscreenDetection() {
 function initializeExtension() {
     if (isInitialized) return;
     
-    // 載入遮蔽器狀態
     loadBlockerStatus();
+
+    setupLayoutConfigChangeListener();
     
-    // 載入跳過設定
     loadSkipSettings();
     
-    // 設置 URL 變化監聽
+    loadCustomKeywords();
+    
     setupURLChangeListener();
     
-    // 初始化影片片段處理
     if (isWatchPage()) {
         handleVideoChange();
     }
     
-    // 設置全螢幕事件監聽（延遲執行，非關鍵路徑）
     if (typeof requestIdleCallback !== 'undefined') {
         requestIdleCallback(setupFullscreenEventListeners);
         requestIdleCallback(setupYouTubeFullscreenDetection);
