@@ -3124,9 +3124,11 @@ function removeBlockers() {
     const voteControl = document.getElementById('vote-control-container');
     if (voteControl) voteControl.remove();
 
-    // 3.3 Remove gear button when blocker is disabled
-    removeGearButton();
-    hideLayoutPanel();
+    // 3.3 Remove gear button only when truly disabling (checked by caller context)
+    if (!isWatchPage() || !shouldEnableBlocker()) {
+        removeGearButton();
+        hideLayoutPanel();
+    }
 }
 
 // 使用防抖動函數限制頻繁呼叫
