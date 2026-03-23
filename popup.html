@@ -353,8 +353,40 @@
       letter-spacing: 0.5px;
     }
     
-    /* === 版面設定區塊 === */
-    .layout-settings, .segment-settings {
+    /* === 版面設定入口按鈕 === */
+    .open-layout-button {
+      width: 100%;
+      background: var(--primary-gradient);
+      color: white;
+      border: none;
+      padding: 13px 20px;
+      border-radius: var(--radius-md);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: var(--transition);
+      box-shadow: 0 4px 16px rgba(102, 126, 234, 0.35);
+      letter-spacing: 0.3px;
+    }
+    .open-layout-button:hover:not(:disabled) {
+      box-shadow: 0 6px 24px rgba(102, 126, 234, 0.55);
+      transform: translateY(-2px);
+    }
+    .open-layout-button:active:not(:disabled) {
+      transform: translateY(0);
+    }
+    .open-layout-button:disabled {
+      background: linear-gradient(135deg, #555 0%, #666 100%);
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+    /* === 片段設定區塊 === */
+    .segment-settings {
       margin-top: 20px;
       padding: 18px;
       background: var(--card-bg);
@@ -364,10 +396,10 @@
       box-shadow: var(--shadow-md);
       transition: var(--transition);
     }
-    .layout-settings:hover, .segment-settings:hover {
+    .segment-settings:hover {
       border-color: rgba(102, 126, 234, 0.2);
     }
-    .layout-header, .segment-header {
+    .segment-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -378,31 +410,31 @@
       transition: var(--transition);
       user-select: none;
     }
-    .layout-header:hover, .segment-header:hover {
+    .segment-header:hover {
       background: rgba(102, 126, 234, 0.1);
     }
-    .layout-header:active, .segment-header:active {
+    .segment-header:active {
       transform: scale(0.98);
     }
-    .layout-title, .segment-title {
+    .segment-title {
       font-weight: 600;
       font-size: 15px;
       color: var(--text-primary);
       letter-spacing: 0.3px;
     }
-    .layout-toggle-icon, .segment-toggle-icon {
+    .segment-toggle-icon {
       font-size: 14px;
       color: var(--text-secondary);
       transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .layout-toggle-icon.expanded, .segment-toggle-icon.expanded {
+    .segment-toggle-icon.expanded {
       transform: rotate(180deg);
     }
-    .layout-content, .segment-content {
+    .segment-content {
       display: none;
       animation: slideDown 0.3s ease-out;
     }
-    .layout-content.show, .segment-content.show {
+    .segment-content.show {
       display: block;
     }
     @keyframes slideDown {
@@ -442,173 +474,6 @@
       margin-bottom: 8px;
       font-size: 13px;
       color: var(--text-secondary);
-    }
-    .slider-value {
-      color: #4facfe;
-      font-weight: 700;
-      min-width: 50px;
-      text-align: right;
-      padding: 2px 8px;
-      background: rgba(79, 172, 254, 0.1);
-      border-radius: 6px;
-      font-size: 12px;
-    }
-    .slider-input {
-      width: 100%;
-      height: 8px;
-      -webkit-appearance: none;
-      appearance: none;
-      background: rgba(0, 0, 0, 0.3);
-      border-radius: 10px;
-      outline: none;
-      transition: var(--transition);
-      cursor: pointer;
-    }
-    .slider-input:hover {
-      background: rgba(0, 0, 0, 0.4);
-    }
-    .slider-input::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 20px;
-      height: 20px;
-      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-      border-radius: 50%;
-      cursor: pointer;
-      box-shadow: 0 2px 8px rgba(79, 172, 254, 0.4);
-      transition: var(--transition);
-    }
-    .slider-input::-webkit-slider-thumb:hover {
-      box-shadow: 0 4px 12px rgba(79, 172, 254, 0.6);
-      transform: scale(1.1);
-    }
-    .slider-input::-moz-range-thumb {
-      width: 20px;
-      height: 20px;
-      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-      border-radius: 50%;
-      cursor: pointer;
-      border: none;
-      box-shadow: 0 2px 8px rgba(79, 172, 254, 0.4);
-      transition: var(--transition);
-    }
-    .slider-input::-moz-range-thumb:hover {
-      box-shadow: 0 4px 12px rgba(79, 172, 254, 0.6);
-      transform: scale(1.1);
-    }
-    .reset-button {
-      width: 100%;
-      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-      color: white;
-      border: none;
-      padding: 12px 20px;
-      border-radius: var(--radius-md);
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      margin-top: 16px;
-      transition: var(--transition);
-      box-shadow: 0 4px 12px rgba(240, 147, 251, 0.3);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .reset-button:hover {
-      box-shadow: 0 6px 20px rgba(240, 147, 251, 0.5);
-      transform: translateY(-2px);
-    }
-    .reset-button:active {
-      transform: translateY(0);
-    }
-    /* === 編輯模式按鈕 === */
-    .edit-mode-button {
-      width: 100%;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      padding: 12px 20px;
-      border-radius: var(--radius-md);
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      margin-bottom: 14px;
-      transition: var(--transition);
-      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .edit-mode-button:hover {
-      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
-      transform: translateY(-2px);
-    }
-    .edit-mode-button.active {
-      background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-      animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-    @keyframes pulse {
-      0%, 100% {
-        opacity: 1;
-        box-shadow: 0 6px 20px rgba(250, 112, 154, 0.6);
-      }
-      50% {
-        opacity: 0.85;
-        box-shadow: 0 4px 12px rgba(250, 112, 154, 0.4);
-      }
-    }
-    .edit-mode-hint {
-      font-size: 11px;
-      color: var(--text-primary);
-      margin-bottom: 14px;
-      padding: 12px 16px;
-      background: linear-gradient(135deg, rgba(250, 112, 154, 0.15) 0%, rgba(254, 225, 64, 0.15) 100%);
-      border-radius: var(--radius-md);
-      border-left: 3px solid #fa709a;
-      display: none;
-      line-height: 1.6;
-      box-shadow: var(--shadow-sm);
-    }
-    .edit-mode-hint.show {
-      display: block;
-      animation: slideDown 0.3s ease-out;
-    }
-    .color-legend {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-      margin-top: 12px;
-      font-size: 10px;
-    }
-    .color-legend-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 8px;
-      background: rgba(0, 0, 0, 0.2);
-      border-radius: 6px;
-    }
-    .color-box {
-      width: 14px;
-      height: 14px;
-      border-radius: 4px;
-      flex-shrink: 0;
-    }
-    .color-box.identity { background: linear-gradient(135deg, rgba(255, 0, 0, 0.6), rgba(255, 0, 0, 0.4)); border: 1px solid rgba(255, 0, 0, 0.8); }
-    .color-box.message { background: linear-gradient(135deg, rgba(0, 255, 0, 0.6), rgba(0, 255, 0, 0.4)); border: 1px solid rgba(0, 255, 0, 0.8); }
-    .color-box.vote { background: linear-gradient(135deg, rgba(0, 100, 255, 0.6), rgba(0, 100, 255, 0.4)); border: 1px solid rgba(0, 100, 255, 0.8); }
-    .color-box.panel { background: transparent; border: 2px dashed rgba(255, 215, 0, 0.8); }
-    /* === 片段設定區塊 === */
-    .segment-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      cursor: pointer;
-      padding: 12px 14px;
-      margin: -8px -8px 16px -8px;
-      border-radius: var(--radius-md);
-      transition: var(--transition);
-      user-select: none;
-    }
-    .segment-header:hover {
-      background: rgba(102, 126, 234, 0.1);
     }
     .analyze-button {
       width: 100%;
@@ -1174,117 +1039,9 @@
     </div>
   </div>
   
-  <!-- 版面設定區塊 -->
-  <div class="layout-settings">
-    <div class="layout-header" id="layout-header">
-      <span class="layout-title">📐 版面設定</span>
-      <span class="layout-toggle-icon" id="layout-toggle-icon">▼</span>
-    </div>
-    <div class="layout-content" id="layout-content">
-      <!-- 編輯模式切換 -->
-      <button id="edit-mode-toggle" class="edit-mode-button">🔧 開啟編輯模式</button>
-      <div class="edit-mode-hint" id="edit-mode-hint">
-        編輯模式已啟用！遮蔽區域將顯示為半透明並標示框線
-        <div class="color-legend">
-          <div class="color-legend-item"><span class="color-box identity"></span>身分區</div>
-          <div class="color-legend-item"><span class="color-box message"></span>訊息區</div>
-          <div class="color-legend-item"><span class="color-box vote"></span>上警區</div>
-          <div class="color-legend-item"><span class="color-box panel"></span>面板區</div>
-        </div>
-      </div>
-      
-      <!-- 容器位置設定 -->
-      <div class="layout-group">
-        <div class="layout-group-title">遮蔽容器位置</div>
-        
-        <div class="slider-item">
-          <div class="slider-label">
-            <span>頂部偏移</span>
-            <span class="slider-value" id="containerTop-value">8%</span>
-          </div>
-          <input type="range" class="slider-input" id="containerTop" min="0" max="20" step="0.5" value="8">
-        </div>
-        
-        <div class="slider-item">
-          <div class="slider-label">
-            <span>容器高度</span>
-            <span class="slider-value" id="containerHeight-value">87%</span>
-          </div>
-          <input type="range" class="slider-input" id="containerHeight" min="50" max="100" step="1" value="87">
-        </div>
-        
-        <div class="slider-item">
-          <div class="slider-label">
-            <span>容器寬度</span>
-            <span class="slider-value" id="containerWidth-value">12%</span>
-          </div>
-          <input type="range" class="slider-input" id="containerWidth" min="5" max="25" step="0.5" value="12">
-        </div>
-        
-        <div class="slider-item">
-          <div class="slider-label">
-            <span>左側邊距</span>
-            <span class="slider-value" id="containerLeftOffset-value">7%</span>
-          </div>
-          <input type="range" class="slider-input" id="containerLeftOffset" min="0" max="20" step="0.5" value="7">
-        </div>
-        
-        <div class="slider-item">
-          <div class="slider-label">
-            <span>右側邊距</span>
-            <span class="slider-value" id="containerRightOffset-value">7%</span>
-          </div>
-          <input type="range" class="slider-input" id="containerRightOffset" min="0" max="20" step="0.5" value="7">
-        </div>
-      </div>
-      
-      <!-- 區域比例設定 -->
-      <div class="layout-group">
-        <div class="layout-group-title">區域比例</div>
-        
-        <div class="slider-item">
-          <div class="slider-label">
-            <span>身分區寬度</span>
-            <span class="slider-value" id="identityWidthRatio-value">20.83%</span>
-          </div>
-          <input type="range" class="slider-input" id="identityWidthRatio" min="10" max="50" step="0.5" value="20.83">
-        </div>
-        
-        <div class="slider-item">
-          <div class="slider-label">
-            <span>訊息區高度比例</span>
-            <span class="slider-value" id="messageFlexRatio-value">2</span>
-          </div>
-          <input type="range" class="slider-input" id="messageFlexRatio" min="1" max="5" step="0.5" value="2">
-        </div>
-        
-        <div class="slider-item">
-          <div class="slider-label">
-            <span>上警區高度比例</span>
-            <span class="slider-value" id="voteFlexRatio-value">1</span>
-          </div>
-          <input type="range" class="slider-input" id="voteFlexRatio" min="0.5" max="3" step="0.5" value="1">
-        </div>
-      </div>
-      
-      <!-- 按鈕位置設定 -->
-      <div class="layout-group">
-        <div class="layout-group-title">控制按鈕</div>
-        
-        <div class="slider-item">
-          <div class="slider-label">
-            <span>上警按鈕頂部偏移</span>
-            <span class="slider-value" id="voteButtonTop-value">3%</span>
-          </div>
-          <input type="range" class="slider-input" id="voteButtonTop" min="0" max="15" step="0.5" value="3">
-        </div>
-      </div>
-      
-      <!-- 恢復預設值按鈕 -->
-      <button id="reset-layout" class="reset-button">🔄 恢復預設值</button>
-    </div>
-  </div>
-  
+  <!-- 版面設定入口 -->
+  <button id="open-layout-panel" class="open-layout-button">📐 開啟版面設定</button>
+
   <!-- 片段設定區塊 -->
   <div class="segment-settings">
     <div class="segment-header" id="segment-header">
