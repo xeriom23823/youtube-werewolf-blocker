@@ -1559,6 +1559,585 @@ function resetLayoutConfig() {
     saveLayoutConfig();
 }
 
+// ===== 浮動版面設定面板（Inline Layout Panel）=====
+
+let layoutPanelVisible = false;
+let layoutPanelMinimized = false;
+let layoutPanelDragging = false;
+let layoutPanelDragOffsetX = 0;
+let layoutPanelDragOffsetY = 0;
+
+// 2.2 注入面板 CSS 樣式
+function createLayoutPanelStyles() {
+    if (document.getElementById('wlp-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'wlp-styles';
+    style.textContent = `
+        #wlp-root {
+            all: initial;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft JhengHei', '微軟正黑體', sans-serif;
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            width: 300px;
+            background: rgba(15, 15, 35, 0.97);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 14px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.7), 0 0 0 1px rgba(102,126,234,0.15);
+            z-index: 10001;
+            display: none;
+            overflow: hidden;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            user-select: none;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        #wlp-root.wlp-visible {
+            display: block;
+            animation: wlpFadeIn 0.3s ease;
+        }
+        #wlp-root.wlp-hiding {
+            animation: wlpFadeOut 0.3s ease forwards;
+        }
+        @keyframes wlpFadeIn {
+            from { opacity: 0; transform: scale(0.95) translateY(-8px); }
+            to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes wlpFadeOut {
+            from { opacity: 1; transform: scale(1) translateY(0); }
+            to   { opacity: 0; transform: scale(0.95) translateY(-8px); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #wlp-root, #wlp-root.wlp-visible, #wlp-root.wlp-hiding {
+                animation: none !important;
+                transition: none !important;
+            }
+        }
+        .wlp-header {
+            all: initial;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 14px;
+            background: linear-gradient(135deg, rgba(102,126,234,0.25) 0%, rgba(118,75,162,0.25) 100%);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            cursor: grab;
+            position: relative;
+            border-top-left-radius: 14px;
+            border-top-right-radius: 14px;
+        }
+        .wlp-header:active { cursor: grabbing; }
+        .wlp-title {
+            all: initial;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: 0.4px;
+            pointer-events: none;
+        }
+        .wlp-header-btns {
+            all: initial;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .wlp-btn {
+            all: initial;
+            font-family: inherit;
+            width: 26px;
+            height: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            color: rgba(255,255,255,0.7);
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+        .wlp-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
+        .wlp-body {
+            all: initial;
+            font-family: inherit;
+            display: block;
+            padding: 14px;
+            max-height: 70vh;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(102,126,234,0.4) transparent;
+        }
+        .wlp-body::-webkit-scrollbar { width: 4px; }
+        .wlp-body::-webkit-scrollbar-thumb { background: rgba(102,126,234,0.4); border-radius: 4px; }
+        .wlp-group {
+            all: initial;
+            font-family: inherit;
+            display: block;
+            margin-bottom: 14px;
+            padding: 12px;
+            background: rgba(0,0,0,0.25);
+            border-radius: 10px;
+            border: 1px solid rgba(102,126,234,0.1);
+        }
+        .wlp-group-title {
+            all: initial;
+            font-family: inherit;
+            display: block;
+            font-size: 10px;
+            font-weight: 700;
+            color: rgba(180,180,212,0.9);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(102,126,234,0.2);
+        }
+        .wlp-slider-item {
+            all: initial;
+            font-family: inherit;
+            display: block;
+            margin-bottom: 12px;
+        }
+        .wlp-slider-label {
+            all: initial;
+            font-family: inherit;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 12px;
+            color: rgba(180,180,212,0.85);
+        }
+        .wlp-slider-value {
+            all: initial;
+            font-family: inherit;
+            color: #4facfe;
+            font-weight: 700;
+            min-width: 44px;
+            text-align: right;
+            padding: 1px 6px;
+            background: rgba(79,172,254,0.12);
+            border-radius: 5px;
+            font-size: 11px;
+        }
+        .wlp-slider {
+            all: initial;
+            display: block;
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(0,0,0,0.35);
+            border-radius: 8px;
+            outline: none;
+            cursor: pointer;
+        }
+        .wlp-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(79,172,254,0.5);
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
+        }
+        .wlp-slider::-webkit-slider-thumb:hover {
+            box-shadow: 0 3px 10px rgba(79,172,254,0.7);
+            transform: scale(1.15);
+        }
+        .wlp-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(79,172,254,0.5);
+        }
+        .wlp-action-btn {
+            all: initial;
+            font-family: inherit;
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 14px;
+            border-radius: 9px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 10px;
+            text-align: center;
+            transition: box-shadow 0.2s ease, transform 0.2s ease;
+            letter-spacing: 0.3px;
+        }
+        .wlp-action-btn:last-child { margin-bottom: 0; }
+        .wlp-action-btn:active { transform: scale(0.97); }
+        .wlp-edit-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            box-shadow: 0 3px 10px rgba(102,126,234,0.35);
+        }
+        .wlp-edit-btn:hover { box-shadow: 0 5px 16px rgba(102,126,234,0.55); transform: translateY(-1px); }
+        .wlp-edit-btn.wlp-active {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            box-shadow: 0 3px 10px rgba(250,112,154,0.5);
+            animation: wlpPulse 2s ease infinite;
+        }
+        @keyframes wlpPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.82; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .wlp-edit-btn.wlp-active { animation: none; }
+        }
+        .wlp-reset-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: #fff;
+            box-shadow: 0 3px 10px rgba(240,147,251,0.3);
+        }
+        .wlp-reset-btn:hover { box-shadow: 0 5px 16px rgba(240,147,251,0.5); transform: translateY(-1px); }
+        /* gear button */
+        #wlp-gear {
+            all: initial;
+            position: fixed;
+            top: 74px;
+            right: 10px;
+            width: 32px;
+            height: 32px;
+            background: rgba(15,15,35,0.88);
+            border: 1px solid rgba(102,126,234,0.4);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 10002;
+            font-size: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+            transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+            backdrop-filter: blur(8px);
+        }
+        #wlp-gear:hover {
+            background: rgba(102,126,234,0.3);
+            transform: scale(1.1) rotate(30deg);
+            box-shadow: 0 4px 14px rgba(102,126,234,0.5);
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+// 2.1 建立面板 DOM 結構
+function createLayoutPanel() {
+    if (document.getElementById('wlp-root')) return;
+    createLayoutPanelStyles();
+
+    const root = document.createElement('div');
+    root.id = 'wlp-root';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'wlp-header';
+
+    const title = document.createElement('span');
+    title.className = 'wlp-title';
+    title.textContent = '📐 版面設定';
+
+    const headerBtns = document.createElement('div');
+    headerBtns.className = 'wlp-header-btns';
+
+    const minBtn = document.createElement('span');
+    minBtn.className = 'wlp-btn';
+    minBtn.id = 'wlp-min-btn';
+    minBtn.textContent = '▼';
+    minBtn.title = '收合';
+
+    const closeBtn = document.createElement('span');
+    closeBtn.className = 'wlp-btn';
+    closeBtn.id = 'wlp-close-btn';
+    closeBtn.textContent = '✕';
+    closeBtn.title = '關閉';
+
+    headerBtns.appendChild(minBtn);
+    headerBtns.appendChild(closeBtn);
+    header.appendChild(title);
+    header.appendChild(headerBtns);
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'wlp-body';
+    body.id = 'wlp-body';
+
+    // 4.1 Sliders definition
+    const sliderGroups = [
+        {
+            title: '遮蔽容器位置',
+            sliders: [
+                { id: 'containerTop', label: '頂部偏移', min: 0, max: 20, step: 0.5, unit: '%' },
+                { id: 'containerHeight', label: '容器高度', min: 50, max: 100, step: 1, unit: '%' },
+                { id: 'containerWidth', label: '容器寬度', min: 5, max: 25, step: 0.5, unit: '%' },
+                { id: 'containerLeftOffset', label: '左側邊距', min: 0, max: 20, step: 0.5, unit: '%' },
+                { id: 'containerRightOffset', label: '右側邊距', min: 0, max: 20, step: 0.5, unit: '%' }
+            ]
+        },
+        {
+            title: '區域比例',
+            sliders: [
+                { id: 'identityWidthRatio', label: '身分區寬度', min: 10, max: 50, step: 0.5, unit: '%' },
+                { id: 'messageFlexRatio', label: '訊息區高度比例', min: 1, max: 5, step: 0.5, unit: '' },
+                { id: 'voteFlexRatio', label: '上警區高度比例', min: 0.5, max: 3, step: 0.5, unit: '' }
+            ]
+        },
+        {
+            title: '控制按鈕',
+            sliders: [
+                { id: 'voteButtonTop', label: '上警按鈕頂部偏移', min: 0, max: 15, step: 0.5, unit: '%' }
+            ]
+        }
+    ];
+
+    sliderGroups.forEach(function(group) {
+        const groupEl = document.createElement('div');
+        groupEl.className = 'wlp-group';
+
+        const groupTitle = document.createElement('span');
+        groupTitle.className = 'wlp-group-title';
+        groupTitle.textContent = group.title;
+        groupEl.appendChild(groupTitle);
+
+        group.sliders.forEach(function(s) {
+            const item = document.createElement('div');
+            item.className = 'wlp-slider-item';
+
+            const labelRow = document.createElement('div');
+            labelRow.className = 'wlp-slider-label';
+
+            const labelText = document.createElement('span');
+            labelText.textContent = s.label;
+
+            const valueSpan = document.createElement('span');
+            valueSpan.className = 'wlp-slider-value';
+            valueSpan.id = 'wlp-val-' + s.id;
+            const curVal = layoutConfig[s.id] !== undefined ? layoutConfig[s.id] : 0;
+            valueSpan.textContent = curVal + s.unit;
+
+            labelRow.appendChild(labelText);
+            labelRow.appendChild(valueSpan);
+
+            const slider = document.createElement('input');
+            slider.type = 'range';
+            slider.className = 'wlp-slider';
+            slider.id = 'wlp-' + s.id;
+            slider.min = s.min;
+            slider.max = s.max;
+            slider.step = s.step;
+            slider.value = curVal;
+
+            // 4.2 input: real-time update + immediate redraw
+            slider.addEventListener('input', function() {
+                const v = parseFloat(this.value);
+                valueSpan.textContent = v + s.unit;
+                layoutConfig[s.id] = v;
+                if (isWatchPage() && shouldEnableBlocker()) {
+                    hideIdentityInfo();
+                }
+            });
+
+            // 4.3 change: persist to storage
+            slider.addEventListener('change', function() {
+                layoutConfig[s.id] = parseFloat(this.value);
+                saveLayoutConfig();
+            });
+
+            item.appendChild(labelRow);
+            item.appendChild(slider);
+            groupEl.appendChild(item);
+        });
+
+        body.appendChild(groupEl);
+    });
+
+    // 4.4 Edit mode button
+    const editBtn = document.createElement('button');
+    editBtn.className = 'wlp-action-btn wlp-edit-btn';
+    editBtn.id = 'wlp-edit-btn';
+    editBtn.textContent = '🔧 開啟編輯模式';
+    editBtn.addEventListener('click', function() {
+        editMode = !editMode;
+        if (editMode) {
+            editBtn.textContent = '🔧 關閉編輯模式';
+            editBtn.classList.add('wlp-active');
+        } else {
+            editBtn.textContent = '🔧 開啟編輯模式';
+            editBtn.classList.remove('wlp-active');
+        }
+        if (isWatchPage() && shouldEnableBlocker()) {
+            forceUpdateBlockers();
+        }
+    });
+    body.appendChild(editBtn);
+
+    // 4.5 Reset button
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'wlp-action-btn wlp-reset-btn';
+    resetBtn.textContent = '🔄 恢復預設值';
+    resetBtn.addEventListener('click', function() {
+        resetLayoutConfig();
+        syncPanelSliders();
+        if (isWatchPage() && shouldEnableBlocker()) {
+            hideIdentityInfo();
+        }
+    });
+    body.appendChild(resetBtn);
+
+    root.appendChild(header);
+    root.appendChild(body);
+    document.body.appendChild(root);
+
+    // 2.3 Close button
+    closeBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        hideLayoutPanel();
+    });
+
+    // 5.3 Minimize button
+    minBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        layoutPanelMinimized = !layoutPanelMinimized;
+        body.style.display = layoutPanelMinimized ? 'none' : 'block';
+        minBtn.textContent = layoutPanelMinimized ? '▲' : '▼';
+        minBtn.title = layoutPanelMinimized ? '展開' : '收合';
+    });
+
+    // 5.1 Drag
+    header.addEventListener('mousedown', function(e) {
+        if (e.target === closeBtn || e.target === minBtn) return;
+        layoutPanelDragging = true;
+        const rect = root.getBoundingClientRect();
+        layoutPanelDragOffsetX = e.clientX - rect.left;
+        layoutPanelDragOffsetY = e.clientY - rect.top;
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!layoutPanelDragging) return;
+        const panel = document.getElementById('wlp-root');
+        if (!panel) return;
+        // 5.2 Viewport boundary constraint
+        const pw = panel.offsetWidth;
+        const ph = panel.offsetHeight;
+        let newLeft = e.clientX - layoutPanelDragOffsetX;
+        let newTop = e.clientY - layoutPanelDragOffsetY;
+        newLeft = Math.max(0, Math.min(newLeft, window.innerWidth - pw));
+        newTop = Math.max(0, Math.min(newTop, window.innerHeight - ph));
+        panel.style.left = newLeft + 'px';
+        panel.style.top = newTop + 'px';
+        panel.style.right = 'auto';
+    });
+
+    document.addEventListener('mouseup', function() {
+        layoutPanelDragging = false;
+    });
+
+    // 6.2 Fullscreen: re-parent panel when entering/exiting fullscreen
+    document.addEventListener('fullscreenchange', function() {
+        const panel = document.getElementById('wlp-root');
+        const gear = document.getElementById('wlp-gear');
+        if (!panel) return;
+        const fsEl = document.fullscreenElement;
+        if (fsEl) {
+            fsEl.appendChild(panel);
+            if (gear) fsEl.appendChild(gear);
+        } else {
+            document.body.appendChild(panel);
+            if (gear) document.body.appendChild(gear);
+        }
+    });
+}
+
+// 6.3 Sync panel sliders from current layoutConfig
+function syncPanelSliders() {
+    const sliderIds = [
+        { id: 'containerTop', unit: '%' },
+        { id: 'containerHeight', unit: '%' },
+        { id: 'containerWidth', unit: '%' },
+        { id: 'containerLeftOffset', unit: '%' },
+        { id: 'containerRightOffset', unit: '%' },
+        { id: 'voteButtonTop', unit: '%' },
+        { id: 'identityWidthRatio', unit: '%' },
+        { id: 'messageFlexRatio', unit: '' },
+        { id: 'voteFlexRatio', unit: '' }
+    ];
+    sliderIds.forEach(function(s) {
+        const slider = document.getElementById('wlp-' + s.id);
+        const valEl = document.getElementById('wlp-val-' + s.id);
+        const v = layoutConfig[s.id];
+        if (slider && v !== undefined) slider.value = v;
+        if (valEl && v !== undefined) valEl.textContent = v + s.unit;
+    });
+    // sync edit mode button state
+    const editBtn = document.getElementById('wlp-edit-btn');
+    if (editBtn) {
+        if (editMode) {
+            editBtn.textContent = '🔧 關閉編輯模式';
+            editBtn.classList.add('wlp-active');
+        } else {
+            editBtn.textContent = '🔧 開啟編輯模式';
+            editBtn.classList.remove('wlp-active');
+        }
+    }
+}
+
+// 2.3 Show panel
+function showLayoutPanel() {
+    createLayoutPanel();
+    const panel = document.getElementById('wlp-root');
+    if (!panel) return;
+    panel.classList.remove('wlp-hiding');
+    panel.classList.add('wlp-visible');
+    layoutPanelVisible = true;
+    // 6.3 Sync sliders with current config
+    syncPanelSliders();
+}
+
+// 2.3 Hide panel
+function hideLayoutPanel() {
+    const panel = document.getElementById('wlp-root');
+    if (!panel) return;
+    panel.classList.add('wlp-hiding');
+    setTimeout(function() {
+        panel.classList.remove('wlp-visible');
+        panel.classList.remove('wlp-hiding');
+        layoutPanelVisible = false;
+    }, 300);
+}
+
+// 3.1 Inject gear button
+function injectGearButton() {
+    if (document.getElementById('wlp-gear')) return;
+    createLayoutPanelStyles();
+    const gear = document.createElement('div');
+    gear.id = 'wlp-gear';
+    gear.textContent = '⚙';
+    gear.title = '版面設定';
+    // 3.2 Toggle panel on click
+    gear.addEventListener('click', function() {
+        if (layoutPanelVisible) {
+            hideLayoutPanel();
+        } else {
+            showLayoutPanel();
+        }
+    });
+    document.body.appendChild(gear);
+}
+
+// 3.3 Remove gear button
+function removeGearButton() {
+    const gear = document.getElementById('wlp-gear');
+    if (gear) gear.remove();
+}
+
 // 監聽 storage 變更，確保跨分頁/跨影片套用同一組排版參數
 function setupLayoutConfigChangeListener() {
     try {
@@ -1641,11 +2220,17 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     } else if (request.action === 'toggleEditMode') {
         console.log("切換編輯模式:", request.enabled);
         editMode = request.enabled;
-        
+
         // 立即重新繪製遮蔽層以應用編輯模式
         if (isWatchPage() && shouldEnableBlocker()) {
             forceUpdateBlockers();
         }
+    } else if (request.action === 'showLayoutPanel') {
+        // 6.1 顯示浮動版面設定面板
+        showLayoutPanel();
+    } else if (request.action === 'hideLayoutPanel') {
+        // 6.1 隱藏浮動版面設定面板
+        hideLayoutPanel();
     }
     // ===== 片段分析相關訊息處理 =====
     else if (request.action === 'analyzeVideo') {
@@ -1807,6 +2392,9 @@ function hideIdentityInfo() {
             removeBlockers();
             return;
         }
+
+        // 3.1 Inject gear button when blocker is active
+        injectGearButton();
 
         // 使用快取獲取影片播放器容器
         const videoContainer = getCachedElement('videoContainer', 'ytd-player');
@@ -2532,9 +3120,13 @@ function toggleVoteBlocker(panelNumber, enable) {
 function removeBlockers() {
     const oldBlockers = document.querySelectorAll(".identity-blocker-container");
     oldBlockers.forEach(blocker => blocker.remove());
-    
+
     const voteControl = document.getElementById('vote-control-container');
     if (voteControl) voteControl.remove();
+
+    // 3.3 Remove gear button when blocker is disabled
+    removeGearButton();
+    hideLayoutPanel();
 }
 
 // 使用防抖動函數限制頻繁呼叫
